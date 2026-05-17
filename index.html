@@ -20,7 +20,7 @@
 body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 20px; }
 h1 { font-family:var(--font); font-size:36px; font-weight:700; color:var(--accent); margin-bottom:8px; }
 .subtitle { color:var(--text-muted); font-size:14px; margin-bottom:48px; }
-.cards { display:flex; gap:28px; flex-wrap:wrap; justify-content:center; max-width:760px; }
+.cards { display:flex; gap:28px; flex-wrap:wrap; justify-content:center; max-width:1120px; }
 .card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:32px 28px; width:340px; text-decoration:none; color:inherit; transition:all .2s; }
 .card:hover { border-color:var(--accent); box-shadow:0 4px 16px rgba(0,0,0,.08); transform:translateY(-2px); }
 .card h2 { font-family:var(--font); font-size:22px; font-weight:600; color:var(--accent); margin-bottom:8px; }
@@ -28,6 +28,7 @@ h1 { font-family:var(--font); font-size:36px; font-weight:700; color:var(--accen
 .tag { display:inline-block; font-size:11px; font-weight:600; padding:3px 10px; border-radius:4px; }
 .tag-legacy { background:var(--accent-light); color:var(--accent); }
 .tag-eb { background:var(--low-bg); color:var(--low); }
+.tag-review { background:#f3e8ff; color:#7c3aed; }
 </style>
 </head>
 <body>
@@ -43,6 +44,11 @@ h1 { font-family:var(--font); font-size:36px; font-weight:700; color:var(--accen
       <h2>Evidence Bank Edition</h2>
       <p>Enhanced version with an integrated evidence repository, LLM-guided extraction prompts, and smart evidence-to-question mapping.</p>
       <span class="tag tag-eb">Evidence Bank</span>
+    </a>
+    <a class="card" href="review.html">
+      <h2>Review & Verify</h2>
+      <p>Upload an exported Excel to review the full assessment, add comments, and export a review report.</p>
+      <span class="tag tag-review">Reviewer</span>
     </a>
   </div>
 </body>

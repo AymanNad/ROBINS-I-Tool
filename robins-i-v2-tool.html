@@ -213,6 +213,18 @@ select { cursor:pointer; }
 
 <script>
 // ================================================================
+// VERIFICATION HASH
+// ================================================================
+const _k = [82,79,66,73,78,83,45,73,45,86,50,45,86,69,82,73,70,89];
+const _VSALT = String.fromCharCode(..._k);
+async function computeVerificationHash(sheetArrays) {
+  const canonical = _VSALT + JSON.stringify(sheetArrays);
+  const encoded = new TextEncoder().encode(canonical);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// ================================================================
 // STATE
 // ================================================================
 let MODE = ''; // 'study' or 'domain'
@@ -1545,7 +1557,7 @@ function loadSession(event) {
 // ================================================================
 // EXCEL EXPORT
 // ================================================================
-function exportExcel() {
+async function exportExcel() {
   saveCurrentStageData();
   const wb = XLSX.utils.book_new();
   // Summary sheet
@@ -1600,6 +1612,18 @@ function exportExcel() {
     });
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(evData), 'Evidence');
+  // Verification sheet (very hidden)
+  const hashHex = await computeVerificationHash([sum, cfData, evData]);
+  const vData = [
+    ['ROBINS-I Verification Hash'],
+    [hashHex],
+    ['Tool Version', 'v2'],
+    ['Export Timestamp', new Date().toISOString()],
+    ['Sheets Covered', '3']
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(vData), '_Verification');
+  wb.Workbook = wb.Workbook || {};
+  wb.Workbook.Sheets = [{Hidden:0},{Hidden:0},{Hidden:0},{Hidden:2}];
   XLSX.writeFile(wb, `ROBINS-I_${STATE.setup.studyCitation||'assessment'}_${STATE.setup.date||'export'}.xlsx`);
   showToast('Excel exported');
 }

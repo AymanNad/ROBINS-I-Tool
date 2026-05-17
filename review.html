@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROBINS-I V2 Review & Verify</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+:root {
+  --bg: #f5f3ee; --surface: #fff; --surface-alt: #faf9f6;
+  --border: #ddd8cf; --border-light: #eae6de;
+  --text: #2c2a25; --text-muted: #7a756b; --text-light: #a09a8e;
+  --accent: #3d5a80; --accent-light: #e8eef4;
+  --low: #2d6a4f; --low-bg: #d8f3dc;
+  --moderate: #c77d15; --moderate-bg: #fff3cd;
+  --serious: #d45e35; --serious-bg: #fde2d4;
+  --critical: #a4133c; --critical-bg: #fdd;
+  --font: 'Crimson Pro', Georgia, serif;
+  --font-ui: 'DM Sans', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+  --radius: 6px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-height:100vh; font-size:14px; line-height:1.55; }
+
+/* UPLOAD SCREEN */
+.upload-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:40px 20px; }
+.upload-screen h1 { font-family:var(--font); font-size:32px; font-weight:700; color:var(--accent); margin-bottom:8px; }
+.upload-screen .subtitle { color:var(--text-muted); font-size:14px; margin-bottom:40px; }
+.drop-zone { width:100%; max-width:520px; border:2px dashed var(--border); border-radius:12px; padding:60px 40px; text-align:center; cursor:pointer; transition:all .2s; background:var(--surface); }
+.drop-zone:hover, .drop-zone.dragover { border-color:var(--accent); background:var(--accent-light); }
+.drop-zone h3 { font-family:var(--font); font-size:20px; color:var(--accent); margin-bottom:8px; }
+.drop-zone p { color:var(--text-muted); font-size:13px; }
+.back-link { margin-top:24px; color:var(--text-muted); font-size:13px; text-decoration:none; }
+.back-link:hover { color:var(--accent); }
+
+/* REVIEW SCREEN */
+.review-screen { display:none; max-width:900px; margin:0 auto; padding:28px 36px 80px; }
+.review-header { margin-bottom:24px; }
+.review-header h1 { font-family:var(--font); font-size:26px; font-weight:700; color:var(--accent); margin-bottom:4px; }
+.review-header .meta { color:var(--text-muted); font-size:13px; }
+
+/* VERIFICATION BADGE */
+.badge { display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:20px; font-size:13px; font-weight:600; margin:12px 0 20px; }
+.badge-verified { background:var(--low-bg); color:var(--low); }
+.badge-unverified { background:var(--critical-bg); color:var(--critical); }
+.badge-unknown { background:var(--moderate-bg); color:var(--moderate); }
+
+/* SECTIONS */
+.section { background:var(--surface); border:1px solid var(--border); border-radius:8px; margin-bottom:20px; overflow:hidden; }
+.section-title { font-family:var(--font); font-size:18px; font-weight:600; color:var(--accent); padding:16px 20px 12px; border-bottom:1px solid var(--border-light); }
+.section-body { padding:16px 20px; }
+.field-row { display:flex; gap:12px; padding:6px 0; border-bottom:1px solid var(--border-light); }
+.field-row:last-child { border-bottom:none; }
+.field-label { font-weight:600; color:var(--text-muted); min-width:180px; flex-shrink:0; font-size:13px; }
+.field-value { flex:1; font-size:13px; word-break:break-word; }
+
+/* DOMAIN SECTION */
+.domain-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px 12px; border-bottom:1px solid var(--border-light); }
+.domain-header h3 { font-family:var(--font); font-size:18px; font-weight:600; color:var(--accent); }
+.judgement-badge { font-size:11px; font-weight:700; padding:3px 10px; border-radius:4px; text-transform:uppercase; }
+.j-low { background:var(--low-bg); color:var(--low); }
+.j-moderate { background:var(--moderate-bg); color:var(--moderate); }
+.j-serious { background:var(--serious-bg); color:var(--serious); }
+.j-critical { background:var(--critical-bg); color:var(--critical); }
+
+.question-row { padding:10px 20px; border-bottom:1px solid var(--border-light); }
+.question-row:last-child { border-bottom:none; }
+.q-id { font-family:var(--mono); font-size:12px; color:var(--accent); font-weight:600; }
+.q-response { display:inline-block; font-size:12px; font-weight:600; padding:1px 8px; border-radius:3px; background:var(--surface-alt); border:1px solid var(--border-light); margin-left:8px; }
+.q-evidence { margin-top:4px; font-size:12px; color:var(--text-muted); font-style:italic; }
+
+/* COMMENT BOX */
+.comment-box { margin:0 20px 16px; }
+.comment-box label { display:block; font-size:12px; font-weight:600; color:var(--moderate); margin-bottom:4px; }
+.comment-box textarea { width:100%; min-height:60px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius); font-family:var(--font-ui); font-size:13px; resize:vertical; background:var(--surface-alt); }
+.comment-box textarea:focus { outline:none; border-color:var(--accent); }
+
+/* TABLE */
+.data-table { width:100%; border-collapse:collapse; font-size:12px; }
+.data-table th { background:var(--surface-alt); font-weight:600; text-align:left; padding:8px 10px; border-bottom:2px solid var(--border); color:var(--text-muted); font-size:11px; text-transform:uppercase; letter-spacing:.5px; }
+.data-table td { padding:6px 10px; border-bottom:1px solid var(--border-light); vertical-align:top; }
+.data-table tr:last-child td { border-bottom:none; }
+
+/* EXPORT BAR */
+.export-bar { position:fixed; bottom:0; left:0; right:0; background:var(--surface); border-top:1px solid var(--border); padding:12px 36px; display:flex; align-items:center; gap:12px; justify-content:flex-end; z-index:100; }
+.export-bar input { padding:7px 12px; border:1px solid var(--border); border-radius:var(--radius); font-family:var(--font-ui); font-size:13px; width:220px; }
+.export-bar input:focus { outline:none; border-color:var(--accent); }
+.export-bar button { padding:8px 20px; border-radius:var(--radius); font-family:var(--font-ui); font-size:13px; font-weight:600; cursor:pointer; border:none; transition:all .15s; }
+.btn-export-review { background:var(--accent); color:#fff; }
+.btn-export-review:hover { opacity:.9; }
+.btn-back-upload { background:none; border:1px solid var(--border); color:var(--text-muted); }
+.btn-back-upload:hover { border-color:var(--accent); color:var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- UPLOAD SCREEN -->
+<div id="uploadScreen" class="upload-screen">
+  <h1>Review & Verify</h1>
+  <div class="subtitle">Upload a ROBINS-I V2 Excel export to review</div>
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <h3>Drop Excel file here</h3>
+    <p>or click to browse (.xlsx)</p>
+  </div>
+  <input type="file" id="fileInput" accept=".xlsx" style="display:none" onchange="handleFile(event.target.files[0])">
+  <a href="index.html" class="back-link">&larr; Back to tools</a>
+</div>
+
+<!-- REVIEW SCREEN -->
+<div id="reviewScreen" class="review-screen"></div>
+
+<!-- EXPORT BAR (hidden until review loaded) -->
+<div id="exportBar" class="export-bar" style="display:none;">
+  <span style="flex:1;font-size:13px;color:var(--text-muted);">Reviewer 2:</span>
+  <input type="text" id="reviewer2Name" placeholder="Your name">
+  <button class="btn-back-upload" onclick="backToUpload()">Upload Different File</button>
+  <button class="btn-export-review" onclick="exportReviewReport()">Export Review Report</button>
+</div>
+
+<script>
+// ================================================================
+// VERIFICATION HASH (same as in the tools)
+// ================================================================
+const _k = [82,79,66,73,78,83,45,73,45,86,50,45,86,69,82,73,70,89];
+const _VSALT = String.fromCharCode(..._k);
+async function computeVerificationHash(sheetArrays) {
+  const canonical = _VSALT + JSON.stringify(sheetArrays);
+  const encoded = new TextEncoder().encode(canonical);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// ================================================================
+// STATE
+// ================================================================
+let PARSED = null; // { sheets, verification, version, verified }
+
+// ================================================================
+// DRAG & DROP
+// ================================================================
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
+
+// ================================================================
+// PARSE & VERIFY
+// ================================================================
+function normalizeSheet(aoa, colCount) {
+  return aoa.map(row => {
+    const padded = [];
+    for (let i = 0; i < colCount; i++) {
+      const v = (row||[])[i];
+      padded.push(v === undefined || v === null ? '' : v);
+    }
+    return padded;
+  });
+}
+
+async function handleFile(file) {
+  if (!file) return;
+  const data = await file.arrayBuffer();
+  const wb = XLSX.read(data, { type:'array' });
+
+  const sheetNames = wb.SheetNames.filter(n => n !== '_Verification');
+  const sheets = {};
+  sheetNames.forEach(name => {
+    sheets[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { header:1, defval:'' });
+  });
+
+  // Verification
+  let verification = null;
+  let verified = null;
+  let version = 'unknown';
+  let timestamp = '';
+
+  if (wb.SheetNames.includes('_Verification')) {
+    const vSheet = XLSX.utils.sheet_to_json(wb.Sheets['_Verification'], { header:1, defval:'' });
+    const storedHash = (vSheet[1]||[])[0] || '';
+    version = (vSheet[2]||[])[1] || 'unknown';
+    timestamp = (vSheet[3]||[])[1] || '';
+    const sheetsCovered = parseInt((vSheet[4]||[])[1]) || 3;
+
+    // Determine column counts for normalization
+    const colCounts = { 'Summary':2, 'CF Evaluation':7, 'Evidence':3, 'Evidence Bank':5 };
+    const dataSheetOrder = version === 'v2-eb'
+      ? ['Summary','CF Evaluation','Evidence','Evidence Bank']
+      : ['Summary','CF Evaluation','Evidence'];
+
+    const normalizedArrays = dataSheetOrder.map(name => {
+      const raw = sheets[name] || [];
+      return normalizeSheet(raw, colCounts[name] || 2);
+    });
+
+    const recomputedHash = await computeVerificationHash(normalizedArrays);
+    verified = (storedHash === recomputedHash);
+    verification = { storedHash, recomputedHash, version, timestamp };
+  }
+
+  PARSED = { sheets, verification, version, verified };
+  renderReview();
+}
+
+// ================================================================
+// RENDER REVIEW
+// ================================================================
+function renderReview() {
+  document.getElementById('uploadScreen').style.display = 'none';
+  document.getElementById('exportBar').style.display = 'flex';
+  const container = document.getElementById('reviewScreen');
+  container.style.display = 'block';
+
+  const summary = PARSED.sheets['Summary'] || [];
+  const cfEval = PARSED.sheets['CF Evaluation'] || [];
+  const evidence = PARSED.sheets['Evidence'] || [];
+  const evidenceBank = PARSED.sheets['Evidence Bank'] || [];
+
+  // Extract metadata from summary
+  const getMeta = (label) => {
+    const row = summary.find(r => r[0] === label);
+    return row ? (row[1]||'') : '';
+  };
+
+  let html = '';
+
+  // Header
+  html += `<div class="review-header">`;
+  html += `<h1>Assessment Review</h1>`;
+  html += `<div class="meta">${getMeta('Study')} &middot; ${getMeta('Reviewer')} &middot; ${getMeta('Date')}</div>`;
+
+  // Verification badge
+  if (PARSED.verified === true) {
+    html += `<div class="badge badge-verified">&#10003; Verified &mdash; exported from ROBINS-I ${PARSED.verification.version} tool on ${formatTimestamp(PARSED.verification.timestamp)}</div>`;
+  } else if (PARSED.verified === false) {
+    html += `<div class="badge badge-unverified">&#10007; Unverified &mdash; data may have been modified after export</div>`;
+  } else {
+    html += `<div class="badge badge-unknown">&#9888; No verification data &mdash; exported from older tool version or created externally</div>`;
+  }
+  html += `</div>`;
+
+  // Study Info
+  html += `<div class="section"><div class="section-title">Study Information</div><div class="section-body">`;
+  html += fieldRow('Project ID', getMeta('Project ID'));
+  html += fieldRow('Study', getMeta('Study'));
+  html += fieldRow('Reviewer', getMeta('Reviewer'));
+  html += fieldRow('Date', getMeta('Date'));
+  html += fieldRow('Outcome', getMeta('Outcome'));
+  html += `</div></div>`;
+
+  // Preliminary - Per Outcome
+  const prelimStart = summary.findIndex(r => r[0] === 'PRELIMINARY - PER OUTCOME');
+  const targetStart = summary.findIndex(r => r[0] === 'TARGET TRIAL');
+  if (prelimStart > -1 && targetStart > -1) {
+    html += `<div class="section"><div class="section-title">Preliminary - Per Outcome</div><div class="section-body">`;
+    for (let i = prelimStart + 1; i < targetStart; i++) {
+      const row = summary[i];
+      if (!row || !row[0]) continue;
+      if (row[0].startsWith('Outcome ')) {
+        html += `<div style="font-weight:700;margin-top:8px;font-size:13px;">${row[0]}</div>`;
+      } else {
+        html += fieldRow(row[0], row[1] || '');
+      }
+    }
+    html += `</div></div>`;
+  }
+
+  // Target Trial
+  html += `<div class="section"><div class="section-title">Target Trial</div><div class="section-body">`;
+  const ttLabels = ['C1: Participants','C2: Intervention','C3: Comparator','C4: Effect Type'];
+  ttLabels.forEach(label => html += fieldRow(label, getMeta(label)));
+  html += `</div></div>`;
+
+  // CF Evaluation
+  if (cfEval.length > 1) {
+    html += `<div class="section"><div class="section-title">Confounding Factor Evaluation</div><div class="section-body" style="padding:0;">`;
+    html += `<table class="data-table"><thead><tr>`;
+    (cfEval[0]||[]).forEach(h => html += `<th>${h}</th>`);
+    html += `</tr></thead><tbody>`;
+    for (let i = 1; i < cfEval.length; i++) {
+      if (!cfEval[i] || !cfEval[i][0]) continue;
+      html += `<tr>`;
+      (cfEval[i]||[]).forEach(v => html += `<td>${v||''}</td>`);
+      html += `</tr>`;
+    }
+    html += `</tbody></table></div></div>`;
+  }
+
+  // Domains D1-D6
+  const domainNames = {
+    'D1':'Confounding', 'D2':'Classification', 'D3':'Selection',
+    'D4':'Missing Data', 'D5':'Measurement', 'D6':'Reporting'
+  };
+  const domainJudgeStart = summary.findIndex(r => r[0] === 'DOMAIN JUDGEMENTS');
+  const domainJudgements = {};
+  if (domainJudgeStart > -1) {
+    for (let i = domainJudgeStart + 1; i < summary.length; i++) {
+      const row = summary[i];
+      if (row && row[0] && row[0].match(/^D\d$/)) {
+        domainJudgements[row[0]] = row[1] || '';
+      }
+    }
+  }
+
+  // Group evidence by domain
+  const domainQuestions = {};
+  let currentDomain = '';
+  for (let i = 1; i < evidence.length; i++) {
+    const row = evidence[i];
+    if (!row || !row[0]) continue;
+    const qid = row[0];
+    const dMatch = qid.match(/^Q(\d)\./);
+    if (dMatch) {
+      const dk = 'D' + dMatch[1];
+      if (!domainQuestions[dk]) domainQuestions[dk] = [];
+      domainQuestions[dk].push({ id:qid, response:row[1]||'', evidence:row[2]||'' });
+    }
+  }
+
+  ['D1','D2','D3','D4','D5','D6'].forEach(dk => {
+    const judgement = domainJudgements[dk] || '';
+    const jClass = judgement ? 'j-' + judgement.toLowerCase() : '';
+    html += `<div class="section">`;
+    html += `<div class="domain-header"><h3>${dk}: ${domainNames[dk]||''}</h3>`;
+    if (judgement) html += `<span class="judgement-badge ${jClass}">${judgement}</span>`;
+    html += `</div>`;
+
+    const questions = domainQuestions[dk] || [];
+    questions.forEach(q => {
+      html += `<div class="question-row">`;
+      html += `<span class="q-id">${q.id}</span>`;
+      if (q.response) html += `<span class="q-response">${q.response}</span>`;
+      if (q.evidence) html += `<div class="q-evidence">${q.evidence}</div>`;
+      html += `</div>`;
+    });
+
+    html += `<div class="comment-box"><label>Reviewer 2 Comment &mdash; ${dk}</label>`;
+    html += `<textarea id="comment-${dk}" placeholder="Add your comments on this domain..."></textarea></div>`;
+    html += `</div>`;
+  });
+
+  // Overall
+  const overallRow = summary.find(r => r[0] === 'OVERALL');
+  const overall = overallRow ? (overallRow[1]||'') : '';
+  const oClass = overall ? 'j-' + overall.toLowerCase() : '';
+  html += `<div class="section">`;
+  html += `<div class="domain-header"><h3>Overall Judgement</h3>`;
+  if (overall) html += `<span class="judgement-badge ${oClass}">${overall}</span>`;
+  html += `</div>`;
+  html += `<div class="comment-box"><label>Reviewer 2 Comment &mdash; Overall</label>`;
+  html += `<textarea id="comment-overall" placeholder="Add your overall comments..."></textarea></div>`;
+  html += `</div>`;
+
+  // Evidence Bank (if present)
+  if (evidenceBank.length > 1) {
+    html += `<div class="section"><div class="section-title">Evidence Bank</div><div class="section-body" style="padding:0;">`;
+    html += `<table class="data-table"><thead><tr>`;
+    (evidenceBank[0]||[]).forEach(h => html += `<th>${h}</th>`);
+    html += `</tr></thead><tbody>`;
+    for (let i = 1; i < evidenceBank.length; i++) {
+      if (!evidenceBank[i]) continue;
+      html += `<tr>`;
+      (evidenceBank[i]||[]).forEach(v => html += `<td>${v||''}</td>`);
+      html += `</tr>`;
+    }
+    html += `</tbody></table></div></div>`;
+  }
+
+  // Spacer for fixed export bar
+  html += `<div style="height:80px;"></div>`;
+
+  container.innerHTML = html;
+}
+
+function fieldRow(label, value) {
+  return `<div class="field-row"><div class="field-label">${label}</div><div class="field-value">${value||'&mdash;'}</div></div>`;
+}
+
+function formatTimestamp(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) + ' ' +
+           d.toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'});
+  } catch(e) { return iso; }
+}
+
+// ================================================================
+// EXPORT REVIEW REPORT
+// ================================================================
+function exportReviewReport() {
+  if (!PARSED) return;
+  const reviewer2 = document.getElementById('reviewer2Name').value || 'Reviewer 2';
+  const summary = PARSED.sheets['Summary'] || [];
+  const getMeta = (label) => {
+    const row = summary.find(r => r[0] === label);
+    return row ? (row[1]||'') : '';
+  };
+
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: Review Summary
+  const domainJudgeStart = summary.findIndex(r => r[0] === 'DOMAIN JUDGEMENTS');
+  const domainJudgements = {};
+  if (domainJudgeStart > -1) {
+    for (let i = domainJudgeStart + 1; i < summary.length; i++) {
+      const row = summary[i];
+      if (row && row[0] && row[0].match(/^D\d$/)) domainJudgements[row[0]] = row[1] || '';
+    }
+  }
+  const overallRow = summary.find(r => r[0] === 'OVERALL');
+  const overall = overallRow ? (overallRow[1]||'') : '';
+
+  const reviewSum = [
+    ['ROBINS-I V2 Review Report'],
+    [],
+    ['Original Study', getMeta('Study')],
+    ['Original Reviewer', getMeta('Reviewer')],
+    ['Original Date', getMeta('Date')],
+    ['Project ID', getMeta('Project ID')],
+    ['Outcome', getMeta('Outcome')],
+    [],
+    ['Reviewer 2', reviewer2],
+    ['Review Date', new Date().toISOString().split('T')[0]],
+    [],
+    ['Verification Status', PARSED.verified === true ? 'VERIFIED' : PARSED.verified === false ? 'UNVERIFIED' : 'NO VERIFICATION DATA'],
+    ['Tool Version', PARSED.verification ? PARSED.verification.version : 'unknown'],
+    ['Export Timestamp', PARSED.verification ? PARSED.verification.timestamp : ''],
+  ];
+  const ws1 = XLSX.utils.aoa_to_sheet(reviewSum);
+  ws1['!cols'] = [{wch:25},{wch:60}];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Review Summary');
+
+  // Sheet 2: Domain Comments
+  const domainNames = {
+    'D1':'Confounding', 'D2':'Classification', 'D3':'Selection',
+    'D4':'Missing Data', 'D5':'Measurement', 'D6':'Reporting'
+  };
+  const commentData = [['Domain','Domain Name','Reviewer 1 Judgement','Reviewer 2 Comment']];
+  ['D1','D2','D3','D4','D5','D6'].forEach(dk => {
+    const el = document.getElementById('comment-' + dk);
+    commentData.push([dk, domainNames[dk], domainJudgements[dk]||'', el ? el.value : '']);
+  });
+  const overallEl = document.getElementById('comment-overall');
+  commentData.push(['Overall', 'Overall Judgement', overall, overallEl ? overallEl.value : '']);
+  const ws2 = XLSX.utils.aoa_to_sheet(commentData);
+  ws2['!cols'] = [{wch:10},{wch:20},{wch:20},{wch:60}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Domain Comments');
+
+  // Sheet 3: Full Assessment (copy of original evidence)
+  const evidence = PARSED.sheets['Evidence'] || [];
+  const ws3 = XLSX.utils.aoa_to_sheet(evidence);
+  XLSX.utils.book_append_sheet(wb, ws3, 'Full Assessment');
+
+  const study = getMeta('Study') || 'assessment';
+  XLSX.writeFile(wb, `ROBINS-I_Review_${study}_${new Date().toISOString().split('T')[0]}.xlsx`);
+}
+
+// ================================================================
+// NAV
+// ================================================================
+function backToUpload() {
+  PARSED = null;
+  document.getElementById('reviewScreen').style.display = 'none';
+  document.getElementById('reviewScreen').innerHTML = '';
+  document.getElementById('exportBar').style.display = 'none';
+  document.getElementById('uploadScreen').style.display = 'flex';
+  document.getElementById('fileInput').value = '';
+}
+</script>
+</body>
+</html>
