@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ROBINS-I V2 Assessment Tools</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
+:root {
+  --bg: #f5f3ee; --surface: #fff;
+  --border: #ddd8cf;
+  --text: #2c2a25; --text-muted: #7a756b; --text-light: #a09a8e;
+  --accent: #3d5a80; --accent-light: #e8eef4;
+  --low: #2d6a4f; --low-bg: #d8f3dc;
+  --font: 'Crimson Pro', Georgia, serif;
+  --font-ui: 'DM Sans', -apple-system, sans-serif;
+  --radius: 6px;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 20px; }
+h1 { font-family:var(--font); font-size:36px; font-weight:700; color:var(--accent); margin-bottom:8px; }
+.subtitle { color:var(--text-muted); font-size:14px; margin-bottom:48px; }
+.cards { display:flex; gap:28px; flex-wrap:wrap; justify-content:center; max-width:760px; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:32px 28px; width:340px; text-decoration:none; color:inherit; transition:all .2s; }
+.card:hover { border-color:var(--accent); box-shadow:0 4px 16px rgba(0,0,0,.08); transform:translateY(-2px); }
+.card h2 { font-family:var(--font); font-size:22px; font-weight:600; color:var(--accent); margin-bottom:8px; }
+.card p { color:var(--text-muted); font-size:13px; line-height:1.6; margin-bottom:14px; }
+.tag { display:inline-block; font-size:11px; font-weight:600; padding:3px 10px; border-radius:4px; }
+.tag-legacy { background:var(--accent-light); color:var(--accent); }
+.tag-eb { background:var(--low-bg); color:var(--low); }
+</style>
+</head>
+<body>
+  <h1>ROBINS-I V2</h1>
+  <div class="subtitle">Risk of Bias in Non-Randomised Studies of Interventions</div>
+  <div class="cards">
+    <a class="card" href="robins-i-v2-tool.html">
+      <h2>Assessment Tool</h2>
+      <p>The standard ROBINS-I V2 assessment tool. Study Sessions and Domain Sessions with save, load, and Excel export.</p>
+      <span class="tag tag-legacy">Legacy</span>
+    </a>
+    <a class="card" href="robins-i-v2-evidence-bank.html">
+      <h2>Evidence Bank Edition</h2>
+      <p>Enhanced version with an integrated evidence repository, LLM-guided extraction prompts, and smart evidence-to-question mapping.</p>
+      <span class="tag tag-eb">Evidence Bank</span>
+    </a>
+  </div>
+</body>
+</html>
