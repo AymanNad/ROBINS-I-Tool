@@ -183,8 +183,9 @@ async function handleFile(file) {
     timestamp = (vSheet[3]||[])[1] || '';
     const sheetsCovered = parseInt((vSheet[4]||[])[1]) || 3;
 
-    // Determine column counts for normalization
-    const colCounts = { 'Summary':2, 'CF Evaluation':7, 'Evidence':3, 'Evidence Bank':5 };
+    // Determine column counts for normalization (EB version has Evidence column in CF Evaluation)
+    const cfCols = version === 'v2-eb' ? 8 : 7;
+    const colCounts = { 'Summary':2, 'CF Evaluation':cfCols, 'Evidence':3, 'Evidence Bank':5 };
     const dataSheetOrder = version === 'v2-eb'
       ? ['Summary','CF Evaluation','Evidence','Evidence Bank']
       : ['Summary','CF Evaluation','Evidence'];
@@ -269,7 +270,17 @@ function renderReview() {
   // Target Trial
   html += `<div class="section"><div class="section-title">Target Trial</div><div class="section-body">`;
   const ttLabels = ['C1: Participants','C2: Intervention','C3: Comparator','C4: Effect Type'];
-  ttLabels.forEach(label => html += fieldRow(label, getMeta(label)));
+  // Build evidence lookup from Evidence sheet for C1/C2/C3
+  const ttEvidence = {};
+  for (let i = 1; i < evidence.length; i++) {
+    const row = evidence[i];
+    if (row && row[0] && row[0].startsWith('C')) ttEvidence[row[0]] = row[2] || '';
+  }
+  ttLabels.forEach(label => {
+    html += fieldRow(label, getMeta(label));
+    const ev = ttEvidence[label] || '';
+    if (ev) html += `<div class="q-evidence" style="margin:-8px 0 12px 0;">${ev}</div>`;
+  });
   html += `</div></div>`;
 
   // CF Evaluation
