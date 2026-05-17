@@ -1007,6 +1007,42 @@ const OPTS = {
   judgement:['','Low','Moderate','Serious','Critical'],
 };
 
+function initHistory() {
+  const state = history.state;
+  if (!state || state.app !== 'robins-i') {
+    history.replaceState({app:'robins-i', mode:'home', stage:0}, '', location.href);
+  } else if (state.mode && state.mode !== 'home') {
+    MODE = state.mode;
+    STAGES = MODE === 'study' ? STUDY_STAGES : DOMAIN_STAGES;
+    currentStage = typeof state.stage === 'number' ? state.stage : 0;
+    showApp(false);
+  }
+  window.addEventListener('popstate', handlePopState);
+}
+
+function setAppHistoryState(mode, stage, replace=false) {
+  const state = {app:'robins-i', mode, stage};
+  if (replace) history.replaceState(state, '', location.href);
+  else history.pushState(state, '', location.href);
+}
+
+function handlePopState(event) {
+  const state = event.state;
+  if (!state || state.app !== 'robins-i') return;
+  if (state.mode === 'home') {
+    document.getElementById('modeScreen').style.display = 'flex';
+    document.getElementById('appShell').style.display = 'none';
+    MODE = '';
+    STAGES = [];
+    currentStage = 0;
+    return;
+  }
+  MODE = state.mode;
+  STAGES = MODE === 'study' ? STUDY_STAGES : DOMAIN_STAGES;
+  currentStage = typeof state.stage === 'number' ? state.stage : 0;
+  showApp(false);
+}
+
 const STUDY_STAGES = [
   {id:'setup',label:'Setup',section:'Getting Started'},
   {id:'prelim-c',label:'C: Target Trial',section:'Preliminary (Study-Level)'},
@@ -1030,6 +1066,8 @@ const DOMAIN_STAGES = [
   {id:'domain-export',label:'Export',section:'Output'},
 ];
 
+initHistory();
+
 // ================================================================
 // MODE SELECTION
 // ================================================================
@@ -1045,18 +1083,24 @@ function startDomainSession() {
   currentStage = 0;
   showApp();
 }
-function showApp() {
+function showApp(pushHistory=true) {
   document.getElementById('modeScreen').style.display = 'none';
   document.getElementById('appShell').style.display = 'flex';
   const tag = document.getElementById('sessionTag');
   if (MODE === 'study') { tag.textContent = 'Study Session'; tag.style.background = 'var(--accent-light)'; tag.style.color = 'var(--accent)'; }
   else { tag.textContent = 'Domain Session'; tag.style.background = 'var(--low-bg)'; tag.style.color = 'var(--low)'; }
   buildSidebar(); renderStage(); updateSidebar(); updateEvidenceCount();
+  if (pushHistory) setAppHistoryState(MODE, currentStage);
 }
 function backToModeSelect() {
   if (!confirm('Go back to start? Unsaved changes will be lost.')) return;
+  STATE.mode = '';
+  MODE = '';
+  STAGES = [];
+  currentStage = 0;
   document.getElementById('modeScreen').style.display = 'flex';
   document.getElementById('appShell').style.display = 'none';
+  setAppHistoryState('home', 0, true);
 }
 
 // ================================================================
@@ -1130,7 +1174,7 @@ function getFinalOverall() {
 // ================================================================
 // NAV
 // ================================================================
-function goToStage(idx) { saveCurrentStageData(); currentStage=idx; lastFocusedEvField=null; renderStage(); updateSidebar(); window.scrollTo(0,0); if(ebPanelOpen) renderEvidenceList(); }
+function goToStage(idx) { saveCurrentStageData(); currentStage=idx; lastFocusedEvField=null; renderStage(); updateSidebar(); window.scrollTo(0,0); if(ebPanelOpen) renderEvidenceList(); setAppHistoryState(MODE, currentStage); }
 function nextStage() {
   saveCurrentStageData();
   if (MODE === 'study' && STAGES[currentStage].id === 'prelim-b') {
@@ -1141,9 +1185,9 @@ function nextStage() {
       showToast(critCount + ' outcome(s) triaged as Critical. Remaining outcomes proceed.');
     }
   }
-  if (currentStage < STAGES.length-1) { currentStage++; lastFocusedEvField=null; renderStage(); updateSidebar(); window.scrollTo(0,0); if(ebPanelOpen) renderEvidenceList(); }
+  if (currentStage < STAGES.length-1) { currentStage++; lastFocusedEvField=null; renderStage(); updateSidebar(); window.scrollTo(0,0); if(ebPanelOpen) renderEvidenceList(); setAppHistoryState(MODE, currentStage); }
 }
-function prevStage() { saveCurrentStageData(); if (currentStage>0) { currentStage--; lastFocusedEvField=null; renderStage(); updateSidebar(); window.scrollTo(0,0); if(ebPanelOpen) renderEvidenceList(); } }
+function prevStage() { saveCurrentStageData(); if (currentStage>0) { currentStage--; lastFocusedEvField=null; renderStage(); updateSidebar(); window.scrollTo(0,0); if(ebPanelOpen) renderEvidenceList(); setAppHistoryState(MODE, currentStage); } }
 
 // ================================================================
 // RENDER
