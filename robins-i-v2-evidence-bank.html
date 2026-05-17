@@ -199,6 +199,8 @@ select { cursor:pointer; }
 .btn-add-row { font-size:12px; color:var(--accent); background:none; border:1px dashed var(--accent); padding:5px 12px; border-radius:var(--radius); cursor:pointer; font-family:var(--font-ui); }
 .btn-add-row:hover { background:var(--accent-light); }
 .btn-remove { font-size:11px; color:var(--serious); background:none; border:none; cursor:pointer; padding:2px 4px; }
+.cf-evidence-row td { padding:0 6px 8px !important; border-bottom:2px solid var(--border) !important; }
+.cf-evidence-textarea { width:100%; min-height:40px; font-size:12px; padding:6px 8px; border:1px solid var(--border-light); border-radius:var(--radius); font-family:var(--font-ui); resize:vertical; }
 
 /* NAV BUTTONS */
 .stage-nav { display:flex; justify-content:space-between; margin-top:32px; padding-top:20px; border-top:1px solid var(--border-light); }
@@ -404,7 +406,8 @@ const ALL_SQS = [
   'Q4.1','Q4.2','Q4.3','Q4.4','Q4.5','Q4.6','Q4.7','Q4.8','Q4.9','Q4.10','Q4.11',
   'Q5.1','Q5.2','Q5.3',
   'Q6.1','Q6.2','Q6.3','Q6.4',
-  'B1','B2','B3','CF'
+  'B1','B2','B3','CF',
+  'C1','C2','C3'
 ];
 
 // ================================================================
@@ -456,6 +459,8 @@ function getCurrentSQ() {
   if (match) return 'Q' + match[1]; // Returns domain prefix like "Q1", "Q2", etc.
   // Prelim B (triage) page
   if (stage.id === 'prelim-b') return 'B';
+  // Target Trial page
+  if (stage.id === 'prelim-c') return 'C';
   // CF Eval page
   if (stage.id === 'cf-eval') return 'CF';
   return null;
@@ -517,12 +522,17 @@ function useEvidence(id) {
   const entry = STATE.evidenceBank.find(e => e.id === id);
   if (!entry) return;
   const stage = STAGES[currentStage];
-  if (!stage || !stage.id.startsWith('domain-')) {
-    showToast('Navigate to a domain to use evidence');
+  if (!stage) { showToast('Navigate to a stage to use evidence'); return; }
+
+  const isDomain = stage.id.startsWith('domain-') && stage.id !== 'domain-setup' && stage.id !== 'domain-export';
+  const isTargetTrial = stage.id === 'prelim-c';
+  const isCFEval = stage.id === 'cf-eval';
+  const isTriage = stage.id === 'prelim-b';
+
+  if (!isDomain && !isTargetTrial && !isCFEval && !isTriage) {
+    showToast('Navigate to a domain, Target Trial, or CF Eval to use evidence');
     return;
   }
-  const dk = stage.id.replace('domain-','d');
-  const domainQuestions = DOMAIN_CONFIG[dk]?.questions || [];
 
   let targetKey = null;
 
@@ -535,17 +545,52 @@ function useEvidence(id) {
   // Priority 2: Fall back to the first matching tagged SQ on this page
   if (!targetKey) {
     for (const sq of (entry.relevantSQs||[])) {
-      const normalized = sq.replace('Q','q').replace('.','_');
-      const evEl = document.getElementById('ev-' + normalized);
-      if (evEl) { targetKey = normalized; break; }
+      if (isDomain) {
+        const normalized = sq.replace('Q','q').replace('.','_');
+        const evEl = document.getElementById('ev-' + normalized);
+        if (evEl) { targetKey = normalized; break; }
+      } else if (isTargetTrial) {
+        // C1, C2, C3 → ev-c1, ev-c2, ev-c3
+        const cMatch = sq.match(/^C(\d)$/);
+        if (cMatch) {
+          const evEl = document.getElementById('ev-c' + cMatch[1]);
+          if (evEl) { targetKey = 'c' + cMatch[1]; break; }
+        }
+      } else if (isCFEval) {
+        // CF tag → first cf evidence field
+        if (sq === 'CF') {
+          const firstCfEv = document.querySelector('textarea[id^="ev-cf-"]');
+          if (firstCfEv) { targetKey = firstCfEv.id.replace('ev-',''); break; }
+        }
+      } else if (isTriage) {
+        const bMatch = sq.match(/^B(\d)$/);
+        if (bMatch) {
+          // Triage has per-outcome evidence fields like ev-b1-0, ev-b2-0
+          const evEl = document.querySelector(`textarea[id^="ev-b${bMatch[1]}-"]`);
+          if (evEl) { targetKey = evEl.id.replace('ev-',''); break; }
+        }
+      }
     }
   }
 
-  // Priority 3: Fall back to the first visible question's evidence field
+  // Priority 3: Fall back to the first visible evidence field on this page
   if (!targetKey) {
-    for (const q of domainQuestions) {
-      const evEl = document.getElementById('ev-' + q.key);
-      if (evEl) { targetKey = q.key; break; }
+    if (isDomain) {
+      const dk = stage.id.replace('domain-','d');
+      const domainQuestions = DOMAIN_CONFIG[dk]?.questions || [];
+      for (const q of domainQuestions) {
+        const evEl = document.getElementById('ev-' + q.key);
+        if (evEl) { targetKey = q.key; break; }
+      }
+    } else if (isTargetTrial) {
+      const first = document.querySelector('textarea[id^="ev-c"]');
+      if (first) targetKey = first.id.replace('ev-','');
+    } else if (isCFEval) {
+      const first = document.querySelector('textarea[id^="ev-cf-"]');
+      if (first) targetKey = first.id.replace('ev-','');
+    } else if (isTriage) {
+      const first = document.querySelector('textarea[id^="ev-b"]');
+      if (first) targetKey = first.id.replace('ev-','');
     }
   }
 
@@ -641,8 +686,8 @@ function normalizeRelevantSQs(sqs) {
   if (typeof sqs === 'string') sqs = sqs.split(/[,;\s]+/);
   return (sqs||[]).map(sq => {
     sq = sq.trim().toUpperCase();
-    // Preserve B1/B2/B3/CF as-is
-    if (['B1','B2','B3','CF'].includes(sq)) return sq;
+    // Preserve B1/B2/B3/CF/C1/C2/C3 as-is
+    if (['B1','B2','B3','CF','C1','C2','C3'].includes(sq)) return sq;
     // Add Q prefix if it's just a number like "1.1"
     if (!sq.startsWith('Q') && /^\d/.test(sq)) sq = 'Q' + sq;
     // Normalize Q1.1 format (handles Q11, Q1.1, Q41, Q4.1 etc.)
@@ -868,6 +913,14 @@ Q6.4 "Is the numerical result likely to have been selected from multiple subgrou
 
 ALSO EXTRACT evidence for PRELIMINARY CONSIDERATIONS:
 
+TARGET TRIAL (Section C):
+C1: "Participants" -- Extract verbatim descriptions of study eligibility criteria, inclusion/exclusion criteria, and the target population.
+  LOOK FOR: Who was eligible? Age, sex, diagnosis, setting, time period, baseline requirements.
+C2: "Intervention" -- Extract verbatim descriptions of the intervention strategy (what, when, how, duration).
+  LOOK FOR: Drug name/dose/duration, surgical procedure, behavioral intervention, timing of initiation. Is it a point intervention or sustained strategy?
+C3: "Comparator" -- Extract verbatim descriptions of the comparator strategy.
+  LOOK FOR: What the comparison group received -- alternative intervention, standard care, no intervention, placebo. How was the comparator defined?
+
 PRELIM B (Triage):
 B1: "Did the authors make any attempt to control for confounding?" -- adjustment methods, covariates, propensity scores, matching, IPW
 B2: "Is there sufficient potential for confounding that this result should not be considered further?" -- baseline imbalances, obvious prognostic differences
@@ -886,7 +939,7 @@ Return a JSON array. Each entry must have:
 - "theme": one of: "Confounding Control", "Intervention/Exposure", "Comparator", "Participants", "Study Design", "Outcome Measurement", "Follow-up/Attrition", "Missing Data", "Statistical Analysis", "Reporting", "Selection/Eligibility", "Other"
 - "quote": the EXACT verbatim text from the study (do NOT paraphrase)
 - "page": page reference (e.g., "p.3", "Table 2, p.8", "Methods, para 2")
-- "relevantSQs": array of specific signalling question IDs this evidence informs (e.g., ["Q1.1", "Q1.2"]). Also use "B1", "B2", "B3" for triage questions and "CF" for confounding factor evaluation evidence.
+- "relevantSQs": array of specific signalling question IDs this evidence informs (e.g., ["Q1.1", "Q1.2"]). Also use "C1", "C2", "C3" for target trial, "B1", "B2", "B3" for triage questions, and "CF" for confounding factor evaluation evidence.
 - "summary": a brief 1-sentence note explaining what this evidence shows and why it matters for the tagged SQs
 
 Be thorough. Extract 30-60 evidence entries. Every signalling question should have at least one tagged piece of evidence. For confounding factors, extract separate evidence for EACH listed factor where possible.
@@ -1430,17 +1483,23 @@ function onPrelimBChangeMulti() { saveCurrentStageData(); renderStage(); updateS
 
 function renderPrelimC() {
   const p=STATE.prelim;
+  if (!p.c1_ev) p.c1_ev = '';
+  if (!p.c2_ev) p.c2_ev = '';
+  if (!p.c3_ev) p.c3_ev = '';
   return `<div><div class="stage-header"><h2>Section C: Target Trial</h2>
     <div class="stage-desc">Specify the hypothetical randomized trial that the non-randomized study attempts to emulate.</div></div>
     <div class="field-group"><label>C1: Participants</label>
       <div class="field-hint">Eligible participants based on study eligibility criteria.</div>
-      <textarea id="prelim-c1" rows="3">${esc(p.c1)}</textarea></div>
+      <textarea id="prelim-c1" rows="3">${esc(p.c1)}</textarea>
+      <div class="question-evidence"><label>Evidence:</label><textarea id="ev-c1" placeholder="Paste verbatim quotes about eligibility criteria...">${esc(p.c1_ev)}</textarea></div></div>
     <div class="field-group"><label>C2: Intervention</label>
       <textarea id="prelim-c2" rows="2" placeholder="Describe intervention strategy">${esc(p.c2)}</textarea>
-      <div style="margin-top:4px"><label style="font-size:12px">Type:</label> ${sel('prelim-c2type',['','Point','Sustained'],p.c2type)}</div></div>
+      <div style="margin-top:4px"><label style="font-size:12px">Type:</label> ${sel('prelim-c2type',['','Point','Sustained'],p.c2type)}</div>
+      <div class="question-evidence"><label>Evidence:</label><textarea id="ev-c2" placeholder="Paste verbatim quotes about the intervention...">${esc(p.c2_ev)}</textarea></div></div>
     <div class="field-group"><label>C3: Comparator</label>
       <textarea id="prelim-c3" rows="2" placeholder="Describe comparator strategy">${esc(p.c3)}</textarea>
-      <div style="margin-top:4px"><label style="font-size:12px">Type:</label> ${sel('prelim-c3type',['','Alternative intervention','Standard care','No intervention'],p.c3type)}</div></div>
+      <div style="margin-top:4px"><label style="font-size:12px">Type:</label> ${sel('prelim-c3type',['','Alternative intervention','Standard care','No intervention'],p.c3type)}</div>
+      <div class="question-evidence"><label>Evidence:</label><textarea id="ev-c3" placeholder="Paste verbatim quotes about the comparator...">${esc(p.c3_ev)}</textarea></div></div>
     <div class="field-group"><label>C4: Effect Type</label>
       <div style="padding:8px 12px;background:var(--accent-light);border-radius:var(--radius);font-size:13px;color:var(--accent);">
         <strong>ITT (Intention-to-Treat)</strong> - Locked by project configuration. Domain 1 Variant A applies.
@@ -1458,9 +1517,11 @@ function renderPrelimD() {
 
 function renderCFEval() {
   if (STATE.cfEval.length === 0 && STATE.p1Factors.length > 0) {
-    STATE.cfEval = STATE.p1Factors.filter(f=>f.trim()).map(f=>({factor:f.trim(),variable:'',controlled:'',valid:'',unnecessary:'',page:'',notes:''}));
+    STATE.cfEval = STATE.p1Factors.filter(f=>f.trim()).map(f=>({factor:f.trim(),variable:'',controlled:'',valid:'',unnecessary:'',page:'',notes:'',evidence:''}));
   }
-  let rows = STATE.cfEval.map((r,i) => `<tr>
+  let rows = STATE.cfEval.map((r,i) => {
+    if (!r.evidence) r.evidence = '';
+    return `<tr>
     <td><input type="text" id="cf-f-${i}" value="${esc(r.factor)}"></td>
     <td><input type="text" id="cf-v-${i}" value="${esc(r.variable)}"></td>
     <td>${sel('cf-c-'+i,OPTS.cfCtrl,r.controlled)}</td>
@@ -1469,7 +1530,11 @@ function renderCFEval() {
     <td><input type="text" id="cf-p-${i}" value="${esc(r.page)}" style="width:60px"></td>
     <td><input type="text" id="cf-n-${i}" value="${esc(r.notes)}"></td>
     <td><button class="btn-remove" onclick="removeCFRow(${i})">&#10005;</button></td>
-  </tr>`).join('');
+  </tr>
+  <tr class="cf-evidence-row"><td colspan="8">
+    <textarea id="ev-cf-${i}" class="cf-evidence-textarea" placeholder="Evidence for ${esc(r.factor)||'this factor'}...">${esc(r.evidence)}</textarea>
+  </td></tr>`;
+  }).join('');
   const total=STATE.cfEval.length;
   const controlled=STATE.cfEval.filter(r=>r.controlled==='Y').length;
   const unNec=STATE.cfEval.filter(r=>r.controlled==='N'&&['Y','PY'].includes(r.unnecessary)).length;
@@ -1489,7 +1554,7 @@ function renderCFEval() {
       <div class="algo-path">Total factors: ${total}\nControlled: ${controlled}\nNot controlled but unnecessary: ${unNec}\nNot controlled AND necessary: ${unNeeded.length}${unNeeded.length?(' ('+unNeeded.map(r=>r.factor).join(', ')+')'):''}
       </div></div></div>`;
 }
-function addCFRow() { STATE.cfEval.push({factor:'',variable:'',controlled:'',valid:'',unnecessary:'',page:'',notes:''}); renderStage(); }
+function addCFRow() { STATE.cfEval.push({factor:'',variable:'',controlled:'',valid:'',unnecessary:'',page:'',notes:'',evidence:''}); renderStage(); }
 function removeCFRow(i) { STATE.cfEval.splice(i,1); renderStage(); }
 
 function renderCFSelect() {
@@ -2036,7 +2101,8 @@ function saveCurrentStageData() {
       }); break;
     case 'prelim-c':
       STATE.prelim.c1=gv('prelim-c1'); STATE.prelim.c2=gv('prelim-c2'); STATE.prelim.c2type=gv('prelim-c2type');
-      STATE.prelim.c3=gv('prelim-c3'); STATE.prelim.c3type=gv('prelim-c3type'); break;
+      STATE.prelim.c3=gv('prelim-c3'); STATE.prelim.c3type=gv('prelim-c3type');
+      STATE.prelim.c1_ev=gv('ev-c1'); STATE.prelim.c2_ev=gv('ev-c2'); STATE.prelim.c3_ev=gv('ev-c3'); break;
     case 'prelim-d': STATE.prelim.d_sources=gv('prelim-d'); break;
     case 'cf-eval':
       STATE.cfEval.forEach((r,i) => {
@@ -2047,6 +2113,7 @@ function saveCurrentStageData() {
         const u=document.getElementById('cf-u-'+i); if(u) r.unnecessary=u.value;
         const p=document.getElementById('cf-p-'+i); if(p) r.page=p.value;
         const n=document.getElementById('cf-n-'+i); if(n) r.notes=n.value;
+        const ev=document.getElementById('ev-cf-'+i); if(ev) r.evidence=ev.value;
       }); break;
     case 'cf-select':
       const cfFactors = STATE.cfEval.filter(r => r.factor && r.factor.trim());
@@ -2156,11 +2223,15 @@ async function exportExcel() {
   ws1['!cols'] = [{wch:25},{wch:60}];
   XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
   // CF sheet
-  const cfData = [['Factor','Variable','Controlled','Valid','Unnecessary','Page','Notes']];
-  STATE.cfEval.forEach(r => cfData.push([r.factor,r.variable,r.controlled,r.valid,r.unnecessary,r.page,r.notes]));
+  const cfData = [['Factor','Variable','Controlled','Valid','Unnecessary','Page','Notes','Evidence']];
+  STATE.cfEval.forEach(r => cfData.push([r.factor,r.variable,r.controlled,r.valid,r.unnecessary,r.page,r.notes,r.evidence||'']));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cfData), 'CF Evaluation');
   // Evidence sheet
   const evData = [['Question','Response','Evidence']];
+  evData.push(['C1: Participants', STATE.prelim.c1||'', STATE.prelim.c1_ev||'']);
+  evData.push(['C2: Intervention', STATE.prelim.c2||'', STATE.prelim.c2_ev||'']);
+  evData.push(['C3: Comparator', STATE.prelim.c3||'', STATE.prelim.c3_ev||'']);
+  STATE.cfEval.forEach((r,i) => { evData.push(['CF: '+r.factor, r.controlled||'', r.evidence||'']); });
   ['d1','d2','d3','d4','d5','d6'].forEach(dk => {
     const d=STATE.domains[dk];
     DOMAIN_CONFIG[dk].questions.forEach(q => { evData.push([q.id, d[q.key]||'', d.evidence[q.key+'_ev']||'']); });
