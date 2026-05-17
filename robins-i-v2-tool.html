@@ -292,8 +292,6 @@ function handlePopState(event) {
   showApp({pushHistory:false});
 }
 
-initHistory();
-
 const STUDY_STAGES = [
   {id:'setup',label:'Setup',section:'Getting Started'},
   {id:'prelim-c',label:'C: Target Trial',section:'Preliminary (Study-Level)'},
@@ -317,6 +315,8 @@ const DOMAIN_STAGES = [
   {id:'domain-export',label:'Export',section:'Output'},
 ];
 
+initHistory();
+
 // ================================================================
 // MODE SELECTION
 // ================================================================
@@ -339,6 +339,7 @@ function showApp({pushHistory=true}={}) {
   if (MODE === 'study') { tag.textContent = 'Study Session'; tag.style.background = 'var(--accent-light)'; tag.style.color = 'var(--accent)'; }
   else { tag.textContent = 'Domain Session'; tag.style.background = 'var(--low-bg)'; tag.style.color = 'var(--low)'; }
   buildSidebar(); renderStage(); updateSidebar();
+  if (pushHistory) setAppHistoryState(MODE, currentStage);
 }
 function backToModeSelect() {
   if (!confirm('Go back to start? Unsaved changes will be lost.')) return;
