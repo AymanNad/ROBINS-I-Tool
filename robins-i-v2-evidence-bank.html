@@ -295,20 +295,22 @@ select { cursor:pointer; }
 <div class="modal-overlay" id="importModal">
   <div class="modal">
     <h2>Import Evidence Bank</h2>
-    <p>Paste the structured evidence output from your LLM below. The expected format is JSON. See the "Generate Extraction Prompt" for the format the LLM should produce.</p>
-    <textarea id="importText" placeholder='Paste LLM output here...
+    <p>Paste the structured evidence output from your LLM below. The tool will auto-detect JSON even if wrapped in code fences or surrounded by text. See "Generate Extraction Prompt" for the format.</p>
+    <textarea id="importText" placeholder='Paste LLM output here (JSON array, with or without code fences)...
 
-Expected format (JSON array):
+Expected format:
 [
   {
-    "theme": "Study Design",
+    "theme": "Confounding Control",
     "quote": "Verbatim quote from the study...",
     "page": "p.3",
-    "relevantSQs": ["Q1.1", "Q2.1"],
-    "summary": "Brief note on what this evidence shows"
+    "relevantSQs": ["Q1.1", "Q1.2"],
+    "summary": "What this evidence shows for the tagged SQs"
   },
   ...
-]'></textarea>
+]
+
+Valid SQ tags: Q1.1-Q1.4, Q2.1-Q2.5, Q3.1-Q3.8, Q4.1-Q4.11, Q5.1-Q5.3, Q6.1-Q6.4, B1, B2, B3, CF'></textarea>
     <div class="modal-actions">
       <button class="modal-btn-secondary" onclick="closeImportModal()">Cancel</button>
       <button class="modal-btn-primary" onclick="parseAndImport()">Import</button>
@@ -320,7 +322,7 @@ Expected format (JSON array):
 <div class="modal-overlay" id="promptModal">
   <div class="modal">
     <h2>Evidence Extraction Prompt</h2>
-    <p>Copy this prompt and paste it into your preferred LLM (NotebookLM, Claude, ChatGPT, etc.) along with the study PDF. The LLM will return structured evidence you can import back into this tool.</p>
+    <p id="promptModalDesc">Copy this prompt and paste it into your preferred LLM (Claude, etc.) along with the study PDF. The LLM will return structured JSON evidence you can import back via "Import Evidence Bank".</p>
     <textarea id="promptText" readonly style="min-height:300px;"></textarea>
     <div class="modal-actions">
       <button class="modal-btn-secondary" onclick="closePromptModal()">Close</button>
@@ -389,7 +391,8 @@ const ALL_SQS = [
   'Q3.1','Q3.2','Q3.3','Q3.4','Q3.5','Q3.6','Q3.7','Q3.8',
   'Q4.1','Q4.2','Q4.3','Q4.4','Q4.5','Q4.6','Q4.7','Q4.8','Q4.9','Q4.10','Q4.11',
   'Q5.1','Q5.2','Q5.3',
-  'Q6.1','Q6.2','Q6.3','Q6.4'
+  'Q6.1','Q6.2','Q6.3','Q6.4',
+  'B1','B2','B3','CF'
 ];
 
 // ================================================================
@@ -436,10 +439,14 @@ function getCurrentSQ() {
   // Determine which SQ the user is currently looking at based on the stage
   const stage = STAGES[currentStage];
   if (!stage) return null;
+  // Domain pages
   const match = stage.id.match(/^domain-(\d)$/);
-  if (!match) return null;
-  const domainNum = match[1];
-  return 'Q' + domainNum; // Returns domain prefix like "Q1", "Q2", etc.
+  if (match) return 'Q' + match[1]; // Returns domain prefix like "Q1", "Q2", etc.
+  // Prelim B (triage) page
+  if (stage.id === 'prelim-b') return 'B';
+  // CF Eval page
+  if (stage.id === 'cf-eval') return 'CF';
+  return null;
 }
 
 function renderEvidenceList() {
@@ -561,8 +568,20 @@ function closeImportModal() {
 }
 
 function parseAndImport() {
-  const raw = document.getElementById('importText').value.trim();
+  let raw = document.getElementById('importText').value.trim();
   if (!raw) { showToast('No content to import'); return; }
+
+  // Strip markdown code fences (```json ... ``` or ``` ... ```)
+  raw = raw.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
+
+  // Try to extract JSON array if LLM added surrounding text
+  if (!raw.startsWith('[')) {
+    const bracketStart = raw.indexOf('[');
+    const bracketEnd = raw.lastIndexOf(']');
+    if (bracketStart !== -1 && bracketEnd > bracketStart) {
+      raw = raw.substring(bracketStart, bracketEnd + 1);
+    }
+  }
 
   let entries = [];
   try {
@@ -572,8 +591,8 @@ function parseAndImport() {
     entries = parsed.map(e => ({
       theme: e.theme || 'Other',
       quote: e.quote || e.evidence || e.text || '',
-      page: e.page || e.pageRef || e.page_ref || '',
-      relevantSQs: normalizeRelevantSQs(e.relevantSQs || e.relevant_sqs || e.sqs || e.questions || []),
+      page: e.page || e.pageRef || e.page_ref || e.page_reference || '',
+      relevantSQs: normalizeRelevantSQs(e.relevantSQs || e.relevant_sqs || e.sqs || e.questions || e.relevant_questions || []),
       summary: e.summary || e.note || e.notes || '',
       id: ebNextId++
     }));
@@ -581,7 +600,7 @@ function parseAndImport() {
     // Try to parse as structured text blocks
     entries = parseStructuredText(raw);
     if (entries.length === 0) {
-      showToast('Could not parse input. Please use JSON format.');
+      showToast('Could not parse input. Check JSON format. Error: ' + jsonErr.message);
       return;
     }
   }
@@ -589,23 +608,32 @@ function parseAndImport() {
   // Validate and add
   const validEntries = entries.filter(e => e.quote && e.quote.trim());
   if (validEntries.length === 0) {
-    showToast('No valid evidence entries found');
+    showToast('No valid evidence entries found (all entries missing "quote" field)');
     return;
   }
+
+  // Report coverage stats
+  const taggedSQs = new Set();
+  validEntries.forEach(e => (e.relevantSQs || []).forEach(sq => taggedSQs.add(sq)));
+  const domainSQs = ALL_SQS.filter(sq => sq.startsWith('Q'));
+  const covered = domainSQs.filter(sq => taggedSQs.has(sq)).length;
 
   STATE.evidenceBank.push(...validEntries);
   closeImportModal();
   renderEvidencePanel();
   updateEvidenceCount();
-  showToast(`Imported ${validEntries.length} evidence entries`);
+  showToast(`Imported ${validEntries.length} entries. SQ coverage: ${covered}/${domainSQs.length}`);
 }
 
 function normalizeRelevantSQs(sqs) {
   if (typeof sqs === 'string') sqs = sqs.split(/[,;\s]+/);
   return (sqs||[]).map(sq => {
     sq = sq.trim().toUpperCase();
-    if (!sq.startsWith('Q')) sq = 'Q' + sq;
-    // Normalize Q1.1 format
+    // Preserve B1/B2/B3/CF as-is
+    if (['B1','B2','B3','CF'].includes(sq)) return sq;
+    // Add Q prefix if it's just a number like "1.1"
+    if (!sq.startsWith('Q') && /^\d/.test(sq)) sq = 'Q' + sq;
+    // Normalize Q1.1 format (handles Q11, Q1.1, Q41, Q4.1 etc.)
     sq = sq.replace(/Q(\d)\.?(\d+)/, 'Q$1.$2');
     return sq;
   }).filter(sq => ALL_SQS.includes(sq));
@@ -644,6 +672,13 @@ function parseStructuredText(text) {
 function openPromptModal() {
   const prompt = generateExtractionPrompt();
   document.getElementById('promptText').value = prompt;
+  const isDomainSession = MODE === 'domain' && STATE.domainSetup.outcomeName;
+  const desc = document.getElementById('promptModalDesc');
+  if (desc) {
+    desc.textContent = isDomainSession
+      ? `Outcome-specific prompt for "${STATE.domainSetup.outcomeName}". Uses only the confounders marked important for this outcome. Paste into Claude (or any LLM) with the study PDF.`
+      : `Study-level prompt covering all outcomes and confounders. Paste into Claude (or any LLM) with the study PDF. Run this during the Study Session for broad coverage.`;
+  }
   document.getElementById('promptModal').classList.add('show');
 }
 function closePromptModal() {
@@ -661,53 +696,281 @@ function copyPrompt() {
 }
 
 function generateExtractionPrompt() {
-  const studyInfo = STATE.setup.studyCitation ? `Study: ${STATE.setup.studyCitation}` : '';
-  const interventionInfo = STATE.prelim.c2 ? `Intervention: ${STATE.prelim.c2}` : '';
-  const comparatorInfo = STATE.prelim.c3 ? `Comparator: ${STATE.prelim.c3}` : '';
-  const outcomeInfo = (STATE.domainSetup.outcomeName || STATE.setup.outcomes.filter(o=>o).join(', '));
+  // Detect if we're in a Domain Session with a specific outcome
+  const isDomainSession = MODE === 'domain' && STATE.domainSetup.outcomeName;
+  return isDomainSession ? generateOutcomePrompt() : generateStudyLevelPrompt();
+}
 
-  const cfFactors = STATE.cfEval.length > 0
-    ? 'Confounding factors of interest: ' + STATE.cfEval.map(r=>r.factor).filter(f=>f).join(', ')
-    : '';
+function generateStudyLevelPrompt() {
+  // Build context block from everything the user has entered so far
+  const lines = [];
+  if (STATE.setup.studyCitation) lines.push(`Study: ${STATE.setup.studyCitation}`);
+  if (STATE.setup.projectId) lines.push(`Project: ${STATE.setup.projectId}`);
+  if (STATE.prelim.c1) lines.push(`Participants: ${STATE.prelim.c1}`);
+  if (STATE.prelim.c2) lines.push(`Intervention: ${STATE.prelim.c2} (${STATE.prelim.c2type || 'type not specified'})`);
+  if (STATE.prelim.c3) lines.push(`Comparator: ${STATE.prelim.c3} (${STATE.prelim.c3type || 'type not specified'})`);
+  const outcomeNames = STATE.setup.outcomes.filter(o => o.trim());
+  if (outcomeNames.length > 0) lines.push(`Outcomes: ${outcomeNames.join('; ')}`);
+  lines.push(`Effect type: ITT (Intention-to-Treat) -- Domain 1 Variant A`);
 
-  return `You are a methodological evidence extractor for a ROBINS-I v2 (Risk of Bias in Non-randomized Studies of Interventions) assessment. Your task is to read the attached study and extract ALL methodologically relevant evidence as a structured evidence bank.
+  // Build CF block with detail
+  let cfBlock = '';
+  const cfFactors = STATE.cfEval.filter(r => r.factor && r.factor.trim());
+  if (cfFactors.length > 0) {
+    cfBlock = `\nIMPORTANT CONFOUNDING FACTORS:\n` + cfFactors.map(cf => {
+      let desc = `- ${cf.factor}`;
+      if (cf.variable) desc += ` (measured as: ${cf.variable})`;
+      return desc;
+    }).join('\n');
+  } else if (STATE.p1Factors.length > 0) {
+    cfBlock = `\nIMPORTANT CONFOUNDING FACTORS:\n` + STATE.p1Factors.filter(f=>f.trim()).map(f => `- ${f}`).join('\n');
+  }
 
-${studyInfo ? '== STUDY CONTEXT ==\n' + [studyInfo, interventionInfo, comparatorInfo, outcomeInfo ? 'Outcome(s): ' + outcomeInfo : '', cfFactors].filter(s=>s).join('\n') + '\n' : ''}
-== WHAT TO EXTRACT ==
+  // Build outcome detail block
+  let outcomeBlock = '';
+  const odWithData = STATE.outcomesData.filter(od => od.a3 || od.a1);
+  if (odWithData.length > 0) {
+    outcomeBlock = `\nOUTCOME DETAILS:\n` + odWithData.map(od => {
+      let desc = `- ${od.name}`;
+      if (od.a3) desc += `: ${od.a3}`;
+      if (od.a1) desc += ` | Result: ${od.a1}`;
+      return desc;
+    }).join('\n');
+  }
 
-Extract verbatim quotes (with page references) covering ALL of the following thematic categories. For each piece of evidence, tag it with which ROBINS-I signalling questions it could be relevant to.
+  return `You are a methodological evidence extractor for a ROBINS-I V2 (Risk of Bias in Non-randomized Studies of Interventions, version 2, 2025) assessment. Read the attached study and extract ALL methodologically relevant evidence as a structured evidence bank.
 
-THEMES TO COVER:
-1. Study Design - overall design, setting, time period, data sources
-2. Participants - eligibility criteria, recruitment, baseline characteristics, sample size
-3. Intervention/Exposure - how intervention was defined, measured, timing, adherence
-4. Comparator - how comparator group was defined, any active comparator details
-5. Outcome Measurement - how outcome was defined, measured, who assessed it, blinding, timing
-6. Follow-up/Attrition - follow-up duration, loss to follow-up rates, reasons for dropout
-7. Confounding Control - adjustment methods, covariates included, propensity scores, matching, IPW
-8. Statistical Analysis - analysis methods, models used, sensitivity analyses, subgroup analyses
-9. Missing Data - completeness of data, handling of missing data, imputation methods
-10. Reporting - protocol registration, pre-specified analysis plans, selective reporting indicators
-11. Other - any other methodologically relevant information
+This is a STUDY-LEVEL extraction covering ALL outcomes. The extracted evidence will be imported into a ROBINS-I assessment tool and mapped to specific signalling questions.
 
-SIGNALLING QUESTIONS TO TAG:
-Domain 1 (Confounding): Q1.1 (control of confounders), Q1.2 (valid measurement of confounders), Q1.3 (post-intervention variable control), Q1.4 (negative controls/bias analysis)
-Domain 2 (Classification): Q2.1 (strategies distinguishable at follow-up start), Q2.2 (outcomes after distinction), Q2.3 (analysis avoids ITB problems), Q2.4 (misclassification influenced by outcome), Q2.5 (other classification errors)
-Domain 3 (Selection): Q3.1 (follow-up starts at intervention start), Q3.2 (outcome events excluded), Q3.3 (selection based on post-intervention characteristics), Q3.4 (selection variables associated with intervention), Q3.5 (selection variables influenced by outcome), Q3.6-Q3.8 (correction and severity)
-Domain 4 (Missing Data): Q4.1-Q4.3 (data completeness for intervention/outcome/confounders), Q4.4 (complete case analysis), Q4.5 (missingness related to outcome), Q4.6-Q4.11 (handling of missing data)
-Domain 5 (Measurement): Q5.1 (differential measurement), Q5.2 (assessor awareness), Q5.3 (influence of intervention knowledge)
-Domain 6 (Reporting): Q6.1 (pre-determined plan), Q6.2-Q6.4 (selection from multiple measurements/analyses/subgroups)
+== STUDY CONTEXT ==
+${lines.join('\n')}${cfBlock}${outcomeBlock}
+
+== EXTRACTION RULES ==
+
+1. Extract EXACT VERBATIM quotes from the study. Do NOT paraphrase.
+2. Provide page numbers or section/table references for every quote.
+3. If information is NOT FOUND in the document, do NOT fabricate it.
+4. Extract evidence for BOTH strengths AND weaknesses of the methodology.
+5. A single quote may be relevant to multiple signalling questions -- tag all that apply.
+6. Aim for comprehensive coverage: every signalling question below should ideally have at least one piece of tagged evidence.
+
+== SIGNALLING QUESTIONS REFERENCE ==
+
+For each signalling question below, I describe what it asks and what evidence to look for. Tag your extractions to the specific question IDs.
+
+DOMAIN 1: BIAS DUE TO CONFOUNDING (Variant A -- baseline confounding only)
+${cfFactors.length > 0 ? `The following confounders have been identified as important: ${cfFactors.map(cf=>cf.factor).join(', ')}.\n` : ''}
+Q1.1 "Did the authors control for all the important confounding factors for which this was necessary?"
+  LOOK FOR: Which confounders were adjusted for (regression, matching, stratification, propensity scores, IPW). Were any important confounders NOT controlled for? Was control unnecessary for any (e.g., restricted population, no association)?
+
+Q1.2 "Were confounding factors that were controlled for measured validly and reliably by the variables available in this study?"
+  LOOK FOR: How were confounders measured? Self-report vs clinical records vs registry? Any validation of measures cited? Measurement error concerns?
+
+Q1.3 "Did the authors control for any post-intervention variables that could have been affected by the intervention?"
+  LOOK FOR: Were any mediators or post-baseline variables included as covariates? Over-adjustment concerns? Collider bias from conditioning on intermediate variables?
+
+Q1.4 "Did negative controls, quantitative bias analysis, or other considerations suggest serious uncontrolled confounding?"
+  LOOK FOR: E-values, bias analyses, negative control outcomes/exposures, sensitivity analyses for unmeasured confounding, falsification tests.
+
+DOMAIN 2: BIAS IN CLASSIFICATION OF INTERVENTIONS
+
+Q2.1 "Were the intervention strategies distinguishable at the time when follow-up would have started in the target trial?"
+  LOOK FOR: When does follow-up begin? Can intervention and comparator groups be clearly separated at that point? Is there a period where strategies overlap (immortal time)?
+
+Q2.2 "Did all or nearly all outcome events occur after the intervention and comparator strategies could be distinguished?"
+  LOOK FOR: Was the period of indistinguishable strategies short relative to total follow-up? What proportion of events occurred during vs after that period?
+
+Q2.3 "Did the analysis avoid problems arising from intervention strategies not distinguishable at follow-up start?"
+  LOOK FOR: Clone-censor-weighting, landmark analysis, sequential trial emulation, g-formula methods. Were predictors of treatment during follow-up used for IPW?
+
+Q2.4 "Was classification of intervention status influenced by knowledge of the outcome or risk of the outcome?"
+  LOOK FOR: Was intervention classification based on information collected after follow-up started? Could the outcome have affected how intervention status was recorded? Recall bias in exposure ascertainment?
+
+Q2.5 "Were further classification errors (not influenced by outcome knowledge) likely?"
+  LOOK FOR: How clearly defined were intervention criteria? Type, dose, timing, setting? Data source reliability for classifying intervention status? Could some participants be misclassified?
+
+DOMAIN 3: BIAS IN SELECTION OF PARTICIPANTS
+
+Q3.1 "Did follow-up in the analysis begin at the start of the intervention strategies being compared?"
+  LOOK FOR: Incident vs prevalent users. Was there a lag between intervention start and study entry? Landmark analysis used? Immortal time excluded?
+
+Q3.2 "Were outcome events during a period of follow-up after the start of the interventions excluded from the analysis?"
+  LOOK FOR: Was there a washout period? Were early events excluded? Grace period before outcome ascertainment?
+
+Q3.3 "Was selection of participants into the study (or analysis) based on participant characteristics observed after the start of intervention?"
+  LOOK FOR: Post-baseline exclusion criteria. Were participants excluded based on events after intervention start (e.g., adherence, side effects, subsequent treatments)?
+
+Q3.4 "Were the post-intervention variables that influenced selection likely to be associated with intervention?"
+  LOOK FOR: If post-baseline selection occurred, was it related to which intervention was received?
+
+Q3.5 "Were the post-intervention variables that influenced selection likely to be influenced by the outcome or a cause of the outcome?"
+  LOOK FOR: If Q3.3 and Q3.4 are concerns, does the selection variable also relate to the outcome? (This creates collider bias.)
+
+Q3.6-Q3.8: Correction, sensitivity analyses, and severity of selection biases.
+  LOOK FOR: IPW for selection, sensitivity analyses demonstrating minimal impact, any evidence that selection biases were or were not severe.
+
+DOMAIN 4: BIAS DUE TO MISSING DATA
+
+Q4.1 "Were complete data on intervention status available for all, or nearly all, participants?"
+  LOOK FOR: Missing intervention/exposure data. How many participants had unknown treatment status?
+
+Q4.2 "Were complete data on the outcome available for all, or nearly all, participants?"
+  LOOK FOR: Loss to follow-up rates, attrition numbers, flow diagrams. For continuous outcomes, ~95% completeness is usually sufficient. For rare dichotomous outcomes, consider the ratio of missing to observed events.
+
+Q4.3 "Were complete data on important confounding variables available for all, or nearly all, participants?"
+  LOOK FOR: Missing covariate data. Were any confounders dropped from models due to missingness?
+
+Q4.4 "Is the result based on a complete case analysis?"
+  LOOK FOR: Was the analysis restricted to participants with complete data? Were participants with any missing data excluded?
+
+Q4.5 "Was exclusion from the analysis because of missing data likely to be related to the true value of the outcome?"
+  LOOK FOR: Were reasons for dropout/loss related to the outcome? Differential attrition between groups?
+
+Q4.6-Q4.11: MAR assumptions, imputation methods, alternative corrections, sensitivity analyses.
+  LOOK FOR: Multiple imputation details (variables included, number of imputations), IPW for missing data, FIML, pattern mixture models, sensitivity analyses comparing complete case vs imputed results, tipping point analyses.
+
+DOMAIN 5: BIAS IN MEASUREMENT OF THE OUTCOME
+
+Q5.1 "Could measurement or ascertainment of the outcome have differed between intervention groups?"
+  LOOK FOR: Was the same measurement method used in both groups? Same timing? Same assessors? Did one group have more healthcare contacts (detection bias)?
+
+Q5.2 "Were outcome assessors aware of the intervention received by study participants?"
+  LOOK FOR: Blinding of assessors. For self-reported outcomes, the participant IS the assessor and knows their intervention. Registry/administrative outcomes may be effectively blinded.
+
+Q5.3 "Could assessment of the outcome have been influenced by knowledge of the intervention received?"
+  LOOK FOR: Is the outcome objective (lab values, mortality) or subjective (symptoms, QoL)? Strong prior beliefs about intervention effects? Controversial area? Does assessment require clinical judgement?
+
+DOMAIN 6: BIAS IN SELECTION OF THE REPORTED RESULT
+
+Q6.1 "Was the result reported in accordance with an available, pre-determined analysis plan?"
+  LOOK FOR: Protocol registration (ClinicalTrials.gov, PROSPERO, etc.), published protocol, statistical analysis plan. Pre-registration is rare in observational studies.
+
+Q6.2 "Is the numerical result likely to have been selected from multiple outcome measurements within the outcome domain?"
+  LOOK FOR: Multiple definitions of the same outcome (e.g., different thresholds, time points, instruments). Were all measured outcomes reported?
+
+Q6.3 "Is the numerical result likely to have been selected from multiple analyses of the data?"
+  LOOK FOR: Multiple adjustment models, different covariate sets, different analytical approaches reported. Were all planned analyses reported?
+
+Q6.4 "Is the numerical result likely to have been selected from multiple subgroups?"
+  LOOK FOR: Subgroup analyses. Were subgroups pre-specified? Is the reported result from a subgroup rather than the full sample?
+
+ALSO EXTRACT evidence for PRELIMINARY CONSIDERATIONS:
+
+PRELIM B (Triage):
+B1: "Did the authors make any attempt to control for confounding?" -- adjustment methods, covariates, propensity scores, matching, IPW
+B2: "Is there sufficient potential for confounding that this result should not be considered further?" -- baseline imbalances, obvious prognostic differences
+B3: "Is there a potential for important problems with the outcome measurement?" -- measurement validity/reliability, detectable range, between-group differences
+
+CONFOUNDING FACTOR EVALUATION:
+For each confounder listed above, extract evidence about:
+- Whether it was measured and how (which variable)
+- Whether it was included in the analysis (controlled for)
+- Whether measurement was valid/reliable
+- If not controlled, any evidence that control was unnecessary
 
 == OUTPUT FORMAT ==
 
 Return a JSON array. Each entry must have:
-- "theme": one of the themes listed above
-- "quote": the exact verbatim text from the study (do not paraphrase)
-- "page": page reference (e.g., "p.3", "Table 2, p.8")
-- "relevantSQs": array of signalling question IDs this evidence could inform (e.g., ["Q1.1", "Q1.2"])
-- "summary": a brief 1-sentence note explaining what this evidence shows methodologically
+- "theme": one of: "Confounding Control", "Intervention/Exposure", "Comparator", "Participants", "Study Design", "Outcome Measurement", "Follow-up/Attrition", "Missing Data", "Statistical Analysis", "Reporting", "Selection/Eligibility", "Other"
+- "quote": the EXACT verbatim text from the study (do NOT paraphrase)
+- "page": page reference (e.g., "p.3", "Table 2, p.8", "Methods, para 2")
+- "relevantSQs": array of specific signalling question IDs this evidence informs (e.g., ["Q1.1", "Q1.2"]). Also use "B1", "B2", "B3" for triage questions and "CF" for confounding factor evaluation evidence.
+- "summary": a brief 1-sentence note explaining what this evidence shows and why it matters for the tagged SQs
 
-Be thorough. Extract 20-40 evidence entries to cover the study comprehensively. Include evidence that supports both strengths and weaknesses of the study methodology. Every signalling question should ideally have at least one piece of tagged evidence.
+Be thorough. Extract 30-60 evidence entries. Every signalling question should have at least one tagged piece of evidence. For confounding factors, extract separate evidence for EACH listed factor where possible.
+
+Return ONLY the JSON array, no other text.`;
+}
+
+function generateOutcomePrompt() {
+  // Domain Session: outcome-specific extraction
+  const outcomeName = STATE.domainSetup.outcomeName;
+  const lines = [];
+  if (STATE.setup.studyCitation) lines.push(`Study: ${STATE.setup.studyCitation}`);
+  if (STATE.prelim.c2) lines.push(`Intervention: ${STATE.prelim.c2} (${STATE.prelim.c2type || 'type not specified'})`);
+  if (STATE.prelim.c3) lines.push(`Comparator: ${STATE.prelim.c3} (${STATE.prelim.c3type || 'type not specified'})`);
+  lines.push(`Outcome being assessed: ${outcomeName}`);
+  lines.push(`Effect type: ITT (Intention-to-Treat) -- Domain 1 Variant A`);
+
+  // Get outcome-specific data
+  const od = (STATE.outcomesData || []).find(o => o.name === outcomeName);
+  if (od) {
+    if (od.a3) lines.push(`Outcome definition: ${od.a3}`);
+    if (od.a1) lines.push(`Numerical result: ${od.a1}`);
+    if (od.a2) lines.push(`Result location: ${od.a2}`);
+  }
+
+  // Get only the CFs important for THIS outcome
+  let cfBlock = '';
+  const importantCFNames = (od && od.importantCFs) ? od.importantCFs : [];
+  if (importantCFNames.length > 0) {
+    const cfDetails = STATE.cfEval.filter(cf => importantCFNames.includes(cf.factor));
+    cfBlock = `\nIMPORTANT CONFOUNDING FACTORS FOR THIS OUTCOME:\n` + cfDetails.map(cf => {
+      let desc = `- ${cf.factor}`;
+      if (cf.variable) desc += ` (measured as: ${cf.variable})`;
+      if (cf.controlled) desc += ` [Controlled: ${cf.controlled}]`;
+      if (cf.controlled === 'N' && cf.unnecessary) desc += ` [Control unnecessary: ${cf.unnecessary}]`;
+      return desc;
+    }).join('\n');
+  } else {
+    // Fall back to all CFs
+    const allCFs = STATE.cfEval.filter(r => r.factor && r.factor.trim());
+    if (allCFs.length > 0) {
+      cfBlock = `\nIMPORTANT CONFOUNDING FACTORS:\n` + allCFs.map(cf => {
+        let desc = `- ${cf.factor}`;
+        if (cf.variable) desc += ` (measured as: ${cf.variable})`;
+        return desc;
+      }).join('\n');
+    }
+  }
+
+  // Check existing evidence bank for coverage gaps
+  let gapBlock = '';
+  const allSQsForDomains = ['Q1.1','Q1.2','Q1.3','Q1.4','Q2.1','Q2.2','Q2.3','Q2.4','Q2.5','Q3.1','Q3.2','Q3.3','Q3.4','Q3.5','Q3.6','Q3.7','Q3.8','Q4.1','Q4.2','Q4.3','Q4.4','Q4.5','Q4.6','Q4.7','Q4.8','Q4.9','Q4.10','Q4.11','Q5.1','Q5.2','Q5.3','Q6.1','Q6.2','Q6.3','Q6.4'];
+  if (STATE.evidenceBank.length > 0) {
+    const coveredSQs = new Set();
+    STATE.evidenceBank.forEach(e => (e.relevantSQs || []).forEach(sq => coveredSQs.add(sq)));
+    const uncovered = allSQsForDomains.filter(sq => !coveredSQs.has(sq));
+    if (uncovered.length > 0) {
+      gapBlock = `\nEVIDENCE GAPS FROM PREVIOUS EXTRACTION:\nThe following signalling questions currently have NO evidence tagged to them. Pay special attention to extracting evidence for these:\n${uncovered.join(', ')}\n`;
+    }
+  }
+
+  return `You are a methodological evidence extractor for a ROBINS-I V2 assessment. Read the attached study and extract evidence targeted to a SPECIFIC OUTCOME.
+
+This is an OUTCOME-SPECIFIC extraction. Focus on evidence relevant to the outcome below, supplementing any existing evidence bank entries.
+
+== STUDY CONTEXT ==
+${lines.join('\n')}${cfBlock}
+${gapBlock}
+== WHAT TO EXTRACT ==
+
+Extract EXACT VERBATIM quotes with page references. Focus on evidence relevant to the outcome "${outcomeName}" specifically. For each quote, tag it to the specific signalling questions it informs.
+
+The signalling questions are:
+
+DOMAIN 1 (Confounding): Q1.1 (were all important confounders controlled for?), Q1.2 (valid/reliable measurement of confounders?), Q1.3 (post-intervention variable control -- over-adjustment?), Q1.4 (negative controls/bias analysis suggesting uncontrolled confounding?)
+${importantCFNames.length > 0 ? `  For this outcome, the important confounders are: ${importantCFNames.join(', ')}. Extract evidence about whether each was measured, controlled for, and measured validly.\n` : ''}
+DOMAIN 2 (Classification): Q2.1 (intervention strategies distinguishable at follow-up start?), Q2.2 (outcome events after strategies distinguished?), Q2.3 (analysis avoids immortal time bias?), Q2.4 (classification influenced by outcome knowledge?), Q2.5 (other classification errors?)
+
+DOMAIN 3 (Selection): Q3.1 (follow-up starts at intervention start? incident vs prevalent users?), Q3.2 (outcome events excluded after intervention start?), Q3.3 (selection based on post-intervention characteristics?), Q3.4 (selection variables associated with intervention?), Q3.5 (selection variables influenced by outcome?), Q3.6-Q3.8 (correction/sensitivity/severity)
+
+DOMAIN 4 (Missing Data): Q4.1 (complete intervention data?), Q4.2 (complete outcome data?), Q4.3 (complete confounder data?), Q4.4 (complete case analysis?), Q4.5 (missingness related to outcome?), Q4.6 (missingness explained by model variables?), Q4.7-Q4.9 (imputation methods and appropriateness), Q4.10 (alternative missing data corrections), Q4.11 (sensitivity analyses for missing data)
+
+DOMAIN 5 (Measurement): Q5.1 (measurement differ between groups?), Q5.2 (assessors aware of intervention?), Q5.3 (assessment influenced by intervention knowledge? -- consider whether "${outcomeName}" is objective vs subjective)
+
+DOMAIN 6 (Reporting): Q6.1 (pre-determined analysis plan?), Q6.2 (selected from multiple outcome measurements?), Q6.3 (selected from multiple analyses?), Q6.4 (selected from multiple subgroups?)
+
+== OUTPUT FORMAT ==
+
+Return a JSON array. Each entry must have:
+- "theme": one of: "Confounding Control", "Intervention/Exposure", "Comparator", "Participants", "Study Design", "Outcome Measurement", "Follow-up/Attrition", "Missing Data", "Statistical Analysis", "Reporting", "Selection/Eligibility", "Other"
+- "quote": the EXACT verbatim text from the study (do NOT paraphrase)
+- "page": page reference (e.g., "p.3", "Table 2, p.8")
+- "relevantSQs": array of specific signalling question IDs (e.g., ["Q1.1", "Q4.2"])
+- "summary": a 1-sentence note explaining what this evidence shows for the tagged SQs
+
+Be thorough. Extract 20-40 entries, prioritizing any evidence gaps listed above. Every signalling question should have at least one tagged piece of evidence.
 
 Return ONLY the JSON array, no other text.`;
 }
