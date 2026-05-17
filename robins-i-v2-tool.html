@@ -4,13 +4,21 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ROBINS-I V2 Assessment Tool</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-  // Check local storage immediately to prevent FOUC (Flash of Unstyled Content)
-  if (localStorage.getItem('theme') === 'dark') {
-    document.documentElement.setAttribute('data-theme', 'dark');
-  }
+(function() {
+  const KEY = 'robins-theme-preference';
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  const getStored = () => {
+    try { return localStorage.getItem(KEY); } catch { return null; }
+  };
+  const apply = theme => { document.documentElement.dataset.theme = theme; };
+  apply(getStored() || (media.matches ? 'dark' : 'light'));
+  const syncWithSystem = e => { if (!getStored()) apply(e.matches ? 'dark' : 'light'); };
+  if (media.addEventListener) media.addEventListener('change', syncWithSystem);
+  else if (media.addListener) media.addListener(syncWithSystem);
+})();
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 :root {
@@ -27,58 +35,25 @@
   --font-ui: 'DM Sans', -apple-system, sans-serif;
   --mono: 'JetBrains Mono', monospace;
   --radius: 6px;
+  color-scheme: light;
 }
-
-/* DARK MODE VARIABLES */
 :root[data-theme="dark"] {
-  --bg: #121212; 
-  --surface: #1e1e1e; 
-  --surface-alt: #2a2a2a;
-  --border: #333333; 
-  --border-light: #444444;
-  --text: #e0e0e0; 
-  --text-muted: #aaaaaa; 
-  --text-light: #777777;
-  --accent: #64b5f6; 
-  --accent-light: #162c46;
-  --low: #81c784; 
-  --low-bg: #173b22;
-  --moderate: #ffb74d; 
-  --moderate-bg: #4a3411;
-  --serious: #ff8a65; 
-  --serious-bg: #4a2113;
-  --critical: #f48fb1; 
-  --critical-bg: #4a1223;
+  --bg: #11100e; --surface: #1b1816; --surface-alt: #221f1c;
+  --border: #39322b; --border-light: #2b2520;
+  --text: #f4ede4; --text-muted: #b3aa9d; --text-light: #847c71;
+  --accent: #8fb3d6; --accent-light: #233142;
+  --low: #88c9a1; --low-bg: #173428;
+  --moderate: #d0a45f; --moderate-bg: #3b2c10;
+  --serious: #e08b67; --serious-bg: #412218;
+  --critical: #ef849b; --critical-bg: #401724;
+  color-scheme: dark;
 }
-
-/* THEME TOGGLE BUTTON STYLES */
-.theme-toggle {
-  position: fixed; 
-  top: 16px; 
-  right: 16px; 
-  z-index: 9999;
-  background: var(--surface); 
-  border: 1px solid var(--border);
-  color: var(--text); 
-  border-radius: 50%; 
-  width: 40px; 
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.theme-toggle:hover { 
-  border-color: var(--accent);
-}
-.theme-toggle:focus { 
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-height:100vh; display:flex; font-size:14px; line-height:1.55; }
+.theme-toggle { position:fixed; top:16px; right:16px; z-index:200; border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:999px; padding:9px 14px; font-family:var(--font-ui); font-size:12px; font-weight:600; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,.08); transition:all .18s ease; }
+.theme-toggle:hover { border-color:var(--accent); transform:translateY(-1px); }
+.theme-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.theme-toggle .icon { margin-right:6px; }
 
 /* MODE SELECTOR */
 .mode-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; width:100%; padding:40px 20px; }
@@ -223,9 +198,7 @@ select { cursor:pointer; }
 </head>
 <body>
 
-<button id="themeToggle" class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
-  <span id="themeIcon">🌙</span>
-</button>
+<button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle color theme" aria-pressed="false"><span class="icon">◐</span><span class="label">Theme</span></button>
 
 <!-- MODE SELECTOR -->
 <div id="modeScreen" class="mode-screen">
@@ -271,6 +244,52 @@ select { cursor:pointer; }
 <div class="toast" id="toast"></div>
 
 <script>
+// ================================================================
+// THEME TOGGLE
+// ================================================================
+const THEME_KEY = 'robins-theme-preference';
+function getStoredTheme() {
+  try { return localStorage.getItem(THEME_KEY); } catch { return null; }
+}
+function getSystemTheme() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+function getActiveTheme() {
+  return document.documentElement.dataset.theme || getSystemTheme();
+}
+function applyTheme(theme, persist = true) {
+  document.documentElement.dataset.theme = theme;
+  if (persist) {
+    try { localStorage.setItem(THEME_KEY, theme); } catch {}
+  }
+  updateThemeButton();
+}
+function updateThemeButton() {
+  const btn = document.getElementById('themeToggle');
+  if (!btn) return;
+  const isDark = getActiveTheme() === 'dark';
+  btn.querySelector('.label').textContent = isDark ? 'Light mode' : 'Dark mode';
+  btn.querySelector('.icon').textContent = isDark ? '☾' : '◐';
+  btn.setAttribute('aria-pressed', String(isDark));
+  btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+}
+function initThemeToggle() {
+  const btn = document.getElementById('themeToggle');
+  if (!btn) return;
+  btn.addEventListener('click', () => applyTheme(getActiveTheme() === 'dark' ? 'light' : 'dark'));
+  updateThemeButton();
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  const sync = e => {
+    if (!getStoredTheme()) {
+      document.documentElement.dataset.theme = e.matches ? 'dark' : 'light';
+      updateThemeButton();
+    }
+  };
+  if (media.addEventListener) media.addEventListener('change', sync);
+  else if (media.addListener) media.addListener(sync);
+}
+initThemeToggle();
+
 // ================================================================
 // VERIFICATION HASH
 // ================================================================
@@ -1692,31 +1711,6 @@ function showToast(msg) {
   t.textContent=msg; t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),2500);
 }
-
-// ================================================================
-// DARK MODE TOGGLE
-// ================================================================
-const themeToggleBtn = document.getElementById('themeToggle');
-const themeIcon = document.getElementById('themeIcon');
-
-// Set initial icon based on what was loaded in the <head> script
-if (document.documentElement.getAttribute('data-theme') === 'dark') {
-  themeIcon.textContent = '☀️';
-}
-
-themeToggleBtn.addEventListener('click', () => {
-  let currentTheme = document.documentElement.getAttribute('data-theme');
-  if (currentTheme === 'dark') {
-    document.documentElement.removeAttribute('data-theme');
-    localStorage.setItem('theme', 'light');
-    themeIcon.textContent = '🌙';
-  } else {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    localStorage.setItem('theme', 'dark');
-    themeIcon.textContent = '☀️';
-  }
-});
 </script>
-
 </body>
 </html>
