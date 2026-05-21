@@ -118,9 +118,8 @@ body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-
 .btn-gen-prompt:hover { border-color:var(--accent); color:var(--accent); }
 
 /* EVIDENCE TOGGLE BUTTON */
-.evidence-toggle { position:fixed; right:16px; top:50%; transform:translateY(-50%); z-index:99; background:var(--accent); color:#fff; border:none; padding:10px 8px; border-radius:8px 0 0 8px; cursor:pointer; font-size:12px; font-weight:600; font-family:var(--font-ui); writing-mode:vertical-rl; text-orientation:mixed; letter-spacing:1px; box-shadow:0 2px 8px rgba(0,0,0,.15); transition:all .2s; }
-.evidence-toggle:hover { padding-right:12px; }
-.evidence-toggle.panel-open { right:calc(var(--evidence-w) + 0px); border-radius:8px 0 0 8px; }
+.evidence-toggle { position:fixed; right:0; top:80px; z-index:99; background:var(--accent); color:#fff; border:none; padding:10px 8px; border-radius:8px 0 0 8px; cursor:pointer; font-size:12px; font-weight:600; font-family:var(--font-ui); writing-mode:vertical-rl; text-orientation:mixed; letter-spacing:1px; box-shadow:0 2px 8px rgba(0,0,0,.15); transition:right .3s ease; }
+.evidence-toggle:hover { padding-right:4px; }
 .evidence-toggle .toggle-count { display:inline-block; background:rgba(255,255,255,.25); border-radius:3px; padding:2px 4px; font-size:10px; margin-top:4px; }
 
 /* IMPORT MODAL */
@@ -464,7 +463,7 @@ function toggleEvidencePanel() {
   const toggle = document.getElementById('evidenceToggle');
   const main = document.getElementById('mainContent');
   panel.classList.toggle('open', ebPanelOpen);
-  toggle.classList.toggle('panel-open', ebPanelOpen);
+  toggle.style.right = ebPanelOpen ? '340px' : '0';
   main.classList.toggle('with-evidence', ebPanelOpen);
   if (ebPanelOpen) renderEvidencePanel();
   // Sync PDF drawer right edge with evidence panel state
