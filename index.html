@@ -4,6 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ROBINS-I V2 Assessment Tools</title>
+<script>
+(function() {
+  const KEY = 'robins-theme-preference';
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  const getStored = () => {
+    try { return localStorage.getItem(KEY); } catch { return null; }
+  };
+  const apply = theme => { document.documentElement.dataset.theme = theme; };
+  const theme = getStored() || (media.matches ? 'dark' : 'light');
+  apply(theme);
+  const syncWithSystem = e => {
+    if (!getStored()) apply(e.matches ? 'dark' : 'light');
+  };
+  if (media.addEventListener) media.addEventListener('change', syncWithSystem);
+  else if (media.addListener) media.addListener(syncWithSystem);
+})();
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
 :root {
@@ -12,12 +29,33 @@
   --text: #2c2a25; --text-muted: #7a756b; --text-light: #a09a8e;
   --accent: #3d5a80; --accent-light: #e8eef4;
   --low: #2d6a4f; --low-bg: #d8f3dc;
+  --review: #7c3aed; --review-bg: #f3e8ff;
   --font: 'Crimson Pro', Georgia, serif;
   --font-ui: 'DM Sans', -apple-system, sans-serif;
   --radius: 6px;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #11100e;
+  --surface: #1b1816;
+  --border: #39322b;
+  --text: #f4ede4;
+  --text-muted: #b3aa9d;
+  --text-light: #847c71;
+  --accent: #8fb3d6;
+  --accent-light: #233142;
+  --low: #88c9a1;
+  --low-bg: #173428;
+  --review: #c4a7ff;
+  --review-bg: #2b1f45;
+  color-scheme: dark;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 20px; }
+.theme-toggle { position:fixed; top:16px; right:16px; z-index:200; border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:999px; padding:9px 14px; font-family:var(--font-ui); font-size:12px; font-weight:600; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,.08); transition:all .18s ease; }
+.theme-toggle:hover { border-color:var(--accent); transform:translateY(-1px); }
+.theme-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.theme-toggle .icon { margin-right:6px; }
 h1 { font-family:var(--font); font-size:36px; font-weight:700; color:var(--accent); margin-bottom:8px; }
 .subtitle { color:var(--text-muted); font-size:14px; margin-bottom:48px; }
 .cards { display:flex; gap:28px; flex-wrap:wrap; justify-content:center; max-width:1120px; }
@@ -28,10 +66,13 @@ h1 { font-family:var(--font); font-size:36px; font-weight:700; color:var(--accen
 .tag { display:inline-block; font-size:11px; font-weight:600; padding:3px 10px; border-radius:4px; }
 .tag-legacy { background:var(--accent-light); color:var(--accent); }
 .tag-eb { background:var(--low-bg); color:var(--low); }
-.tag-review { background:#f3e8ff; color:#7c3aed; }
+.tag-review { background:var(--review-bg); color:var(--review); }
+.footer { margin-top:60px; padding-top:30px; border-top:1px solid var(--border); text-align:center; font-size:12px; color:var(--text-light); }
+.footer-text { margin-bottom:4px; }
 </style>
 </head>
 <body>
+  <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle color theme" aria-pressed="false"><span class="icon">◐</span><span class="label">Theme</span></button>
   <h1>ROBINS-I V2</h1>
   <div class="subtitle">Risk of Bias in Non-Randomised Studies of Interventions</div>
   <div class="cards">
@@ -51,5 +92,44 @@ h1 { font-family:var(--font); font-size:36px; font-weight:700; color:var(--accen
       <span class="tag tag-review">Reviewer</span>
     </a>
   </div>
+  <div class="footer">
+    <div class="footer-text">Developed by Dr. Ayman Nadeem</div>
+    <div class="footer-text">and</div>
+    <div class="footer-text">Operation MetaMind Team</div>
+  </div>
+  <script>
+  (function() {
+    const KEY = 'robins-theme-preference';
+    const btn = document.getElementById('themeToggle');
+    const systemTheme = () => window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    const getTheme = () => document.documentElement.dataset.theme || systemTheme();
+    const setTheme = theme => {
+      document.documentElement.dataset.theme = theme;
+      try { localStorage.setItem(KEY, theme); } catch {}
+      updateButton();
+    };
+    const updateButton = () => {
+      if (!btn) return;
+      const isDark = getTheme() === 'dark';
+      btn.querySelector('.label').textContent = isDark ? 'Light mode' : 'Dark mode';
+      btn.querySelector('.icon').textContent = isDark ? '☾' : '◐';
+      btn.setAttribute('aria-pressed', String(isDark));
+      btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+    };
+    btn.addEventListener('click', () => setTheme(getTheme() === 'dark' ? 'light' : 'dark'));
+    updateButton();
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleSystemChange = e => {
+      try {
+        if (!localStorage.getItem(KEY)) {
+          document.documentElement.dataset.theme = e.matches ? 'dark' : 'light';
+          updateButton();
+        }
+      } catch {}
+    };
+    if (media.addEventListener) media.addEventListener('change', handleSystemChange);
+    else if (media.addListener) media.addListener(handleSystemChange);
+  })();
+  </script>
 </body>
 </html>

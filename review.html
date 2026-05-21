@@ -4,6 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ROBINS-I V2 Review & Verify</title>
+<script>
+(function() {
+  const KEY = 'robins-theme-preference';
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  const getStored = () => {
+    try { return localStorage.getItem(KEY); } catch { return null; }
+  };
+  const apply = theme => { document.documentElement.dataset.theme = theme; };
+  apply(getStored() || (media.matches ? 'dark' : 'light'));
+  const syncWithSystem = e => { if (!getStored()) apply(e.matches ? 'dark' : 'light'); };
+  if (media.addEventListener) media.addEventListener('change', syncWithSystem);
+  else if (media.addListener) media.addListener(syncWithSystem);
+})();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -20,9 +34,25 @@
   --font-ui: 'DM Sans', -apple-system, sans-serif;
   --mono: 'JetBrains Mono', monospace;
   --radius: 6px;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #11100e; --surface: #1b1816; --surface-alt: #221f1c;
+  --border: #39322b; --border-light: #2b2520;
+  --text: #f4ede4; --text-muted: #b3aa9d; --text-light: #847c71;
+  --accent: #8fb3d6; --accent-light: #233142;
+  --low: #88c9a1; --low-bg: #173428;
+  --moderate: #d0a45f; --moderate-bg: #3b2c10;
+  --serious: #e08b67; --serious-bg: #412218;
+  --critical: #ef849b; --critical-bg: #401724;
+  color-scheme: dark;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-height:100vh; font-size:14px; line-height:1.55; }
+.theme-toggle { position:fixed; top:16px; right:16px; z-index:200; border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:999px; padding:9px 14px; font-family:var(--font-ui); font-size:12px; font-weight:600; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,.08); transition:all .18s ease; }
+.theme-toggle:hover { border-color:var(--accent); transform:translateY(-1px); }
+.theme-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.theme-toggle .icon { margin-right:6px; }
 
 /* UPLOAD SCREEN */
 .upload-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:40px 20px; }
@@ -96,6 +126,8 @@ body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-
 </head>
 <body>
 
+<button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle color theme" aria-pressed="false"><span class="icon">◐</span><span class="label">Theme</span></button>
+
 <!-- UPLOAD SCREEN -->
 <div id="uploadScreen" class="upload-screen">
   <h1>Review & Verify</h1>
@@ -121,6 +153,51 @@ body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-
 
 <script>
 // ================================================================
+// THEME TOGGLE
+// ================================================================
+const THEME_KEY = 'robins-theme-preference';
+function getStoredTheme() {
+  try { return localStorage.getItem(THEME_KEY); } catch { return null; }
+}
+function getSystemTheme() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+function getActiveTheme() {
+  return document.documentElement.dataset.theme || getSystemTheme();
+}
+function applyTheme(theme, persist = true) {
+  document.documentElement.dataset.theme = theme;
+  if (persist) {
+    try { localStorage.setItem(THEME_KEY, theme); } catch {}
+  }
+  updateThemeButton();
+}
+function updateThemeButton() {
+  const btn = document.getElementById('themeToggle');
+  if (!btn) return;
+  const isDark = getActiveTheme() === 'dark';
+  btn.querySelector('.label').textContent = isDark ? 'Light mode' : 'Dark mode';
+  btn.querySelector('.icon').textContent = isDark ? '☾' : '◐';
+  btn.setAttribute('aria-pressed', String(isDark));
+  btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+}
+function initThemeToggle() {
+  const btn = document.getElementById('themeToggle');
+  if (!btn) return;
+  btn.addEventListener('click', () => applyTheme(getActiveTheme() === 'dark' ? 'light' : 'dark'));
+  updateThemeButton();
+  const media = window.matchMedia('(prefers-color-scheme: dark)');
+  const sync = e => {
+    if (!getStoredTheme()) {
+      document.documentElement.dataset.theme = e.matches ? 'dark' : 'light';
+      updateThemeButton();
+    }
+  };
+  if (media.addEventListener) media.addEventListener('change', sync);
+  else if (media.addListener) media.addListener(sync);
+}
+
+// ================================================================
 // VERIFICATION HASH (same as in the tools)
 // ================================================================
 const _k = [82,79,66,73,78,83,45,73,45,86,50,45,86,69,82,73,70,89];
@@ -136,6 +213,7 @@ async function computeVerificationHash(sheetArrays) {
 // STATE
 // ================================================================
 let PARSED = null; // { sheets, verification, version, verified }
+initThemeToggle();
 
 // ================================================================
 // DRAG & DROP
