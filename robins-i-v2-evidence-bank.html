@@ -18,6 +18,7 @@
   --critical: #a4133c; --critical-bg: #fdd;
   --sidebar-w: 270px;
   --evidence-w: 340px;
+  --pdf-h: 45vh;
   --font: 'Crimson Pro', Georgia, serif;
   --font-ui: 'DM Sans', -apple-system, sans-serif;
   --mono: 'JetBrains Mono', monospace;
@@ -227,6 +228,28 @@ select { cursor:pointer; }
 .outcome-item input { flex:1; border:none; font-size:13px; padding:2px; background:transparent; font-family:var(--font-ui); color:var(--text); }
 .outcome-item input:focus { outline:none; }
 .outcome-item .oi-num { font-family:var(--mono); font-size:11px; color:var(--text-light); min-width:24px; }
+
+/* PDF VIEWER DRAWER */
+.pdf-toggle { position:fixed; bottom:0; left:calc(var(--sidebar-w) + 20px); z-index:99; background:var(--accent); color:#fff; border:none; border-radius:8px 8px 0 0; padding:6px 16px; cursor:pointer; font-size:12px; font-weight:600; font-family:var(--font-ui); box-shadow:0 -2px 8px rgba(0,0,0,.1); transition:all .2s; }
+.pdf-toggle:hover { padding-bottom:10px; }
+.pdf-drawer { position:fixed; bottom:0; left:var(--sidebar-w); right:0; height:var(--pdf-h); background:var(--surface); border-top:2px solid var(--border); z-index:98; display:flex; flex-direction:column; transform:translateY(100%); transition:transform .3s ease; }
+.pdf-drawer.open { transform:translateY(0); }
+.pdf-drawer.with-evidence { right:var(--evidence-w); }
+.main.with-pdf { padding-bottom:calc(var(--pdf-h) + 20px); }
+.pdf-drawer-header { display:flex; align-items:center; gap:10px; padding:6px 12px; border-bottom:1px solid var(--border-light); background:var(--surface-alt); min-height:36px; position:relative; }
+.pdf-resize-handle { position:absolute; top:-4px; left:0; right:0; height:8px; cursor:ns-resize; z-index:1; }
+.pdf-resize-handle:hover, .pdf-resize-handle:active { background:linear-gradient(to bottom, var(--accent-light), transparent); }
+.pdf-filename { font-size:12px; font-weight:600; color:var(--text-muted); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pdf-controls { display:flex; gap:6px; align-items:center; }
+.pdf-upload-btn { font-size:11px; font-weight:600; color:var(--accent); background:var(--accent-light); border:1px solid var(--accent); padding:3px 10px; border-radius:var(--radius); cursor:pointer; font-family:var(--font-ui); }
+.pdf-upload-btn:hover { background:var(--accent); color:#fff; }
+.pdf-close-btn { background:none; border:none; font-size:16px; cursor:pointer; color:var(--text-muted); padding:2px 6px; border-radius:4px; }
+.pdf-close-btn:hover { background:var(--surface); color:var(--text); }
+.pdf-drawer-body { flex:1; overflow:hidden; position:relative; }
+.pdf-drawer-body iframe { width:100%; height:100%; border:none; display:none; }
+.pdf-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:12px; color:var(--text-muted); font-size:13px; }
+.pdf-empty .btn-accent { display:inline-block; background:var(--accent); color:#fff; padding:8px 18px; border-radius:var(--radius); font-size:12px; font-weight:600; cursor:pointer; font-family:var(--font-ui); border:none; }
+.pdf-empty .btn-accent:hover { opacity:.9; }
 </style>
 </head>
 <body>
@@ -270,6 +293,28 @@ select { cursor:pointer; }
     </div>
   </div>
   <div class="main" id="mainContent"></div>
+
+  <!-- PDF Viewer Toggle -->
+  <button class="pdf-toggle" id="pdfToggle" onclick="togglePdfPanel()">&#128196; Study PDF</button>
+
+  <!-- PDF Viewer Drawer -->
+  <div class="pdf-drawer" id="pdfDrawer">
+    <div class="pdf-drawer-header">
+      <div class="pdf-resize-handle" id="pdfResizeHandle"></div>
+      <span class="pdf-filename" id="pdfFilename">No PDF loaded</span>
+      <div class="pdf-controls">
+        <label class="pdf-upload-btn">Upload PDF<input type="file" accept=".pdf" onchange="loadPdf(event)" hidden></label>
+        <button class="pdf-close-btn" onclick="closePdfPanel()">&times;</button>
+      </div>
+    </div>
+    <div class="pdf-drawer-body">
+      <iframe id="pdfFrame"></iframe>
+      <div class="pdf-empty" id="pdfEmpty">
+        <p>Upload a study PDF to view it here while you work.</p>
+        <label class="btn-accent" style="cursor:pointer;">Choose PDF<input type="file" accept=".pdf" onchange="loadPdf(event)" hidden></label>
+      </div>
+    </div>
+  </div>
 
   <!-- Evidence Bank Toggle Button -->
   <button class="evidence-toggle" id="evidenceToggle" onclick="toggleEvidencePanel()">
@@ -422,7 +467,70 @@ function toggleEvidencePanel() {
   toggle.classList.toggle('panel-open', ebPanelOpen);
   main.classList.toggle('with-evidence', ebPanelOpen);
   if (ebPanelOpen) renderEvidencePanel();
+  // Sync PDF drawer right edge with evidence panel state
+  const pdfDrawer = document.getElementById('pdfDrawer');
+  if (pdfDrawer) pdfDrawer.classList.toggle('with-evidence', ebPanelOpen);
 }
+
+// ================================================================
+// PDF VIEWER
+// ================================================================
+let pdfPanelOpen = false;
+let pdfObjectUrl = null;
+
+function togglePdfPanel() {
+  pdfPanelOpen = !pdfPanelOpen;
+  updatePdfPanelState();
+}
+
+function closePdfPanel() {
+  pdfPanelOpen = false;
+  updatePdfPanelState();
+}
+
+function updatePdfPanelState() {
+  const drawer = document.getElementById('pdfDrawer');
+  const toggle = document.getElementById('pdfToggle');
+  const main = document.getElementById('mainContent');
+  drawer.classList.toggle('open', pdfPanelOpen);
+  drawer.classList.toggle('with-evidence', ebPanelOpen);
+  toggle.style.display = pdfPanelOpen ? 'none' : '';
+  main.classList.toggle('with-pdf', pdfPanelOpen);
+}
+
+function loadPdf(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (pdfObjectUrl) URL.revokeObjectURL(pdfObjectUrl);
+  pdfObjectUrl = URL.createObjectURL(file);
+  document.getElementById('pdfFrame').src = pdfObjectUrl;
+  document.getElementById('pdfFilename').textContent = file.name;
+  document.getElementById('pdfEmpty').style.display = 'none';
+  document.getElementById('pdfFrame').style.display = 'block';
+  if (!pdfPanelOpen) togglePdfPanel();
+}
+
+function initPdfResize() {
+  const handle = document.getElementById('pdfResizeHandle');
+  if (!handle) return;
+  let startY, startH;
+  handle.addEventListener('mousedown', function(e) {
+    startY = e.clientY;
+    startH = document.getElementById('pdfDrawer').offsetHeight;
+    document.addEventListener('mousemove', onResize);
+    document.addEventListener('mouseup', stopResize);
+    e.preventDefault();
+  });
+  function onResize(e) {
+    const newH = Math.max(150, Math.min(window.innerHeight - 100, startH + (startY - e.clientY)));
+    document.documentElement.style.setProperty('--pdf-h', newH + 'px');
+  }
+  function stopResize() {
+    document.removeEventListener('mousemove', onResize);
+    document.removeEventListener('mouseup', stopResize);
+  }
+}
+initPdfResize();
 
 function renderEvidencePanel() {
   renderEvidenceFilters();
