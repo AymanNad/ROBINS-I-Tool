@@ -51,10 +51,9 @@
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-height:100vh; display:flex; font-size:14px; line-height:1.55; }
-.theme-toggle { position:fixed; top:16px; right:16px; z-index:200; border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:999px; padding:9px 14px; font-family:var(--font-ui); font-size:12px; font-weight:600; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,.08); transition:all .18s ease; }
-.theme-toggle:hover { border-color:var(--accent); transform:translateY(-1px); }
+.theme-toggle { border:1px solid var(--border); background:var(--surface-alt); color:var(--text-muted); border-radius:4px; padding:3px 7px; font-size:14px; cursor:pointer; line-height:1; transition:all .15s; display:inline-flex; align-items:center; }
+.theme-toggle:hover { border-color:var(--accent); color:var(--accent); }
 .theme-toggle:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.theme-toggle .icon { margin-right:6px; }
 
 /* MODE SELECTOR */
 .mode-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; width:100%; padding:40px 20px; }
@@ -75,7 +74,7 @@ body { font-family:var(--font-ui); background:var(--bg); color:var(--text); min-
 /* SIDEBAR */
 .sidebar { width:var(--sidebar-w); min-height:100vh; background:var(--surface); border-right:1px solid var(--border); position:fixed; left:0; top:0; bottom:0; overflow-y:auto; z-index:100; display:flex; flex-direction:column; }
 .sidebar-header { padding:16px 14px 12px; border-bottom:1px solid var(--border-light); }
-.sidebar-header h1 { font-family:var(--font); font-size:17px; font-weight:700; color:var(--accent); }
+.sidebar-header h1 { font-family:var(--font); font-size:17px; font-weight:700; color:var(--accent); display:flex; align-items:center; justify-content:space-between; }
 .sidebar-header .version { font-size:11px; color:var(--text-muted); margin-top:2px; }
 .sidebar-header .session-tag { display:inline-block; font-size:10px; font-weight:700; padding:2px 7px; border-radius:3px; margin-top:6px; }
 .sidebar-nav { flex:1; padding:6px 0; }
@@ -220,8 +219,6 @@ select { cursor:pointer; }
 </head>
 <body>
 
-<button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle color theme" aria-pressed="false"><span class="icon">◐</span><span class="label">Theme</span></button>
-
 <!-- MODE SELECTOR -->
 <div id="modeScreen" class="mode-screen">
   <h1>ROBINS-I V2</h1>
@@ -247,7 +244,7 @@ select { cursor:pointer; }
 <div id="appShell" style="display:none;width:100%;">
   <div class="sidebar">
     <div class="sidebar-header">
-      <h1>ROBINS-I V2</h1>
+      <h1>ROBINS-I V2 <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle color theme"><span class="icon">◐</span></button></h1>
       <div class="version">Assessment Tool</div>
       <div class="session-tag" id="sessionTag"></div>
     </div>
@@ -312,9 +309,7 @@ function updateThemeButton() {
   const btn = document.getElementById('themeToggle');
   if (!btn) return;
   const isDark = getActiveTheme() === 'dark';
-  btn.querySelector('.label').textContent = isDark ? 'Light mode' : 'Dark mode';
-  btn.querySelector('.icon').textContent = isDark ? '☾' : '◐';
-  btn.setAttribute('aria-pressed', String(isDark));
+  btn.querySelector('.icon').textContent = isDark ? '☀' : '☾';
   btn.title = isDark ? 'Switch to light mode' : 'Switch to dark mode';
 }
 function initThemeToggle() {
